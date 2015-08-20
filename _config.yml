@@ -5,9 +5,9 @@ permalink:           pretty
 relative_permalinks: true
 
 # Setup
-title:               Poole
-tagline:             The Jekyll Butler
-url:                 http://getpoole.com
+title:               Nikkfurie
+tagline:             Not The Black One
+url:                 http://ndp190.github.io
 paginate:            1
 baseurl:             ""
 
@@ -20,9 +20,9 @@ sass:
 
 # About/contact
 author:
-  name:              Mark Otto
-  url:               https://twitter.com/mdo
-  email:             markdotto@gmail.com
+  name:              Phuc NguyenD
+  url:               https://facebook.com/ndp190
+  email:             ndp190@gmail.com
 
 # Custom vars
 version:             2.0.0
