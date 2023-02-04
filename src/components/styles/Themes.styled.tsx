@@ -1,4 +1,5 @@
 import styled from "styled-components";
+import { DefaultTheme as StyledDefaultTheme } from "styled-components";
 
 export const ThemesWrapper = styled.div`
   display: flex;
@@ -24,7 +25,7 @@ interface Color {
   };
 }
 
-export interface DefaultTheme {
+export interface DefaultTheme extends StyledDefaultTheme {
   id: string;
   name: string;
   colors: Color;

@@ -1,6 +1,6 @@
+import { DefaultTheme } from "@/components/styles/Themes.styled";
 import { useEffect, useState } from "react";
 import themes from "../components/styles/themes";
-import { DefaultTheme } from "styled-components";
 import { getFromLS, setToLS } from "./storage";
 
 export const useTheme = () => {

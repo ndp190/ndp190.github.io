@@ -1,4 +1,4 @@
-import { DefaultTheme } from "styled-components";
+import { DefaultTheme } from "./Themes.styled";
 
 export type Themes = {
   [key: string]: DefaultTheme;
