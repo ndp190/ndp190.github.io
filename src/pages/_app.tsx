@@ -1,9 +1,10 @@
 import GlobalStyle from '@/components/styles/GlobalStyle';
+import { DefaultTheme } from '@/components/styles/Themes.styled';
 import '@/styles/globals.css'
 import { useTheme } from '@/utils/useTheme';
 import type { AppProps } from 'next/app'
 import { createContext, useEffect, useState } from 'react';
-import { DefaultTheme, ThemeProvider } from 'styled-components';
+import { ThemeProvider } from 'styled-components';
 
 // TODO remove later
 // export default function App({ Component, pageProps }: AppProps) {
