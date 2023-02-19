@@ -39,6 +39,7 @@ export const commands: Command = [
   { cmd: "history", desc: "view command history", tab: 6 },
   // { cmd: "projects", desc: "view projects that I've coded", tab: 5 },
   { cmd: "pwd", desc: "print current working directory", tab: 10 },
+  { cmd: "ls", desc: "list files in current working directory", tab: 11 },
   // { cmd: "socials", desc: "check out my social accounts", tab: 6 },
   // { cmd: "whoami", desc: "about current user", tab: 7 },
 ];
@@ -51,6 +52,10 @@ interface Term {
   clearHistory?: () => void;
 };
 
+interface Props {
+  files: string[];
+}
+
 export const termContext = createContext<Term>({
   arg: [],
   history: [],
@@ -58,7 +63,7 @@ export const termContext = createContext<Term>({
   index: 0,
 });
 
-const Terminal = () => {
+const Terminal: React.FC<Props> = ({ files }) => {
   const containerRef = useRef(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -139,7 +144,7 @@ const Terminal = () => {
         setHints([]);
       }
     }
-    
+
     // if Ctrl + U
     if (ctrlU) {
       setInputVal('');
@@ -234,7 +239,7 @@ const Terminal = () => {
             </div>
             {validCommand ? (
               <termContext.Provider value={contextValue}>
-                <Output index={index} cmd={commandArray[0]} />
+                <Output index={index} cmd={commandArray[0]} files={files} />
               </termContext.Provider>
             ) : cmdH === "" ? (
               <Empty />

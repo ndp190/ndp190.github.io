@@ -14,13 +14,15 @@ import Themes from "./commands/Themes";
 import { OutputContainer, UsageDiv } from "./styles/Output.styled";
 import { termContext } from "./Terminal";
 import { useContext } from "react";
+import Ls from "./commands/Ls";
 
 type Props = {
   index: number;
   cmd: string;
+  files: string[];
 };
 
-const Output: React.FC<Props> = ({ index, cmd }) => {
+const Output: React.FC<Props> = ({ index, cmd, files }) => {
   const { arg } = useContext(termContext);
 
   const specialCmds = ["projects", "socials", "themes", "echo"];
@@ -48,6 +50,7 @@ const Output: React.FC<Props> = ({ index, cmd }) => {
           themes: <Themes />,
           welcome: <Welcome />,
           whoami: <GeneralOutput>visitor</GeneralOutput>,
+          ls: <Ls files={files} />,
         }[cmd]
       }
     </OutputContainer>
