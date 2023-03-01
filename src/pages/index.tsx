@@ -6,7 +6,7 @@ interface HomeProps {
   files: string[];
 }
 
-export const getServerSideProps = async () => {
+export const getStaticProps = async () => {
   const files = listFiles('terminal');
 
   return {
