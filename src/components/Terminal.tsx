@@ -52,9 +52,6 @@ interface Term {
   clearHistory?: () => void;
 };
 
-interface Props {
-  files: string[];
-}
 
 export const termContext = createContext<Term>({
   arg: [],
@@ -63,7 +60,8 @@ export const termContext = createContext<Term>({
   index: 0,
 });
 
-const Terminal: React.FC<Props> = ({ files }) => {
+
+const Terminal = () => {
   const containerRef = useRef(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -239,7 +237,7 @@ const Terminal: React.FC<Props> = ({ files }) => {
             </div>
             {validCommand ? (
               <termContext.Provider value={contextValue}>
-                <Output index={index} cmd={commandArray[0]} files={files} />
+                <Output index={index} cmd={commandArray[0]} />
               </termContext.Provider>
             ) : cmdH === "" ? (
               <Empty />

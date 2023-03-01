@@ -19,10 +19,9 @@ import Ls from "./commands/Ls";
 type Props = {
   index: number;
   cmd: string;
-  files: string[];
 };
 
-const Output: React.FC<Props> = ({ index, cmd, files }) => {
+const Output: React.FC<Props> = ({ index, cmd }) => {
   const { arg } = useContext(termContext);
 
   const specialCmds = ["projects", "socials", "themes", "echo"];
@@ -50,7 +49,7 @@ const Output: React.FC<Props> = ({ index, cmd, files }) => {
           themes: <Themes />,
           welcome: <Welcome />,
           whoami: <GeneralOutput>visitor</GeneralOutput>,
-          ls: <Ls files={files} />,
+          ls: <Ls />,
         }[cmd]
       }
     </OutputContainer>

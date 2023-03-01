@@ -1,27 +1,35 @@
 import Terminal from "@/components/Terminal";
-import { listFiles } from "@/utils/listFiles";
+import { FileNode, readDirectory } from "@/utils/listFiles";
 import { NextPage } from "next";
+import { createContext } from "react";
 
 interface HomeProps {
-  files: string[];
+  allFileNode: FileNode;
 }
 
 export const getStaticProps = async () => {
-  const files = listFiles('terminal');
+  const allFileNode = readDirectory('public/terminal');
 
   return {
     props: {
-      files,
+      allFileNode,
     },
   };
 };
 
-const Home: NextPage<HomeProps> = ({ files }) => {
+export const homeContext = createContext<HomeProps>({
+  allFileNode: {
+    name: '',
+    isDirectory: false,
+  },
+});
+
+const Home: NextPage<HomeProps> = ({ allFileNode }) => {
   return (
-    <>
-      <Terminal files={files} />
-    </>
+    <homeContext.Provider value={{ allFileNode }}>
+      <Terminal />
+    </homeContext.Provider>
   );
-};
+}
 
 export default Home;
