@@ -39,29 +39,6 @@ function renderNode(node: FileNode): string {
   return output;
 }
 
-function renderNodeTree(node: FileNode, isLastList: boolean[] = []): string {
-  const { name, children, isDirectory } = node;
-  const isRoot = isLastList.length === 0;
-  const branch = isRoot ? '' : isLastList.slice(0, -1).reduceRight((acc, isLast) => {
-    return `${isLast ? '-' : '│'}    ${acc}`;
-  }, isLastList.slice(-1)[0] ? '└──' : '├──');
-  console.log(node.name, isLastList, branch);
-
-  const formattedName = isDirectory ? `${name}/` : name;
-  const displayName = isRoot ? '.' : formattedName;
-  let output = `${branch} ${displayName}\n`;
-
-  if (children) {
-    const lastChildIndex = children.length - 1;
-    children.forEach((childNode, index) => {
-      const isLast = index === lastChildIndex;
-      output += renderNodeTree(childNode, [...isLastList, isLast]);
-    });
-  }
-
-  return output;
-}
-
 const Ls = () => {
   const { allFileNode } = useContext(homeContext);
   // TODO use route to set current directory
@@ -71,7 +48,6 @@ const Ls = () => {
   return (
     <Wrapper>
       <pre>{renderNode(allFileNode)}</pre>
-      <pre>{renderNodeTree(allFileNode)}</pre>
     </Wrapper>
   );
 };
