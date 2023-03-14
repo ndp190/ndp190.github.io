@@ -15,6 +15,7 @@ import { OutputContainer, UsageDiv } from "./styles/Output.styled";
 import { termContext } from "./Terminal";
 import { useContext } from "react";
 import Ls from "./commands/Ls";
+import Tree from "./commands/Tree";
 
 type Props = {
   index: number;
@@ -50,6 +51,7 @@ const Output: React.FC<Props> = ({ index, cmd }) => {
           welcome: <Welcome />,
           whoami: <GeneralOutput>visitor</GeneralOutput>,
           ls: <Ls />,
+          tree: <Tree />,
         }[cmd]
       }
     </OutputContainer>

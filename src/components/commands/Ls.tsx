@@ -5,7 +5,9 @@ import { Wrapper } from "../styles/Output.styled";
 
 function formatDate(timestamp: number): string {
   const date = new Date(timestamp);
-  return date.toLocaleString();
+  // const options = { month: 'short', day: 'numeric' };
+  const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
+  return date.toLocaleString('en-US', options);
 }
 
 function formatFileSize(size: number): string {
@@ -15,24 +17,22 @@ function formatFileSize(size: number): string {
     size /= 1024;
     index++;
   }
-  return `${size.toFixed(1)} ${units[index]}`;
+  return `${size.toFixed(0)}${units[index]}`;
 }
 
-function renderNode(node: FileNode, indent = ""): string {
-  const { name, isDirectory, size, timestamp, children } = node;
+function renderNode(node: FileNode): string {
+  const { children } = node;
+  let output = '';
 
-  let output = indent;
-
-  if (isDirectory) {
-    output += `${name}/\n`;
-  } else {
-    output += `${name} (${formatFileSize(size!)}) ${formatDate(timestamp!)}\n`;
+  if (!children) {
+    return output;
   }
 
   if (children) {
-    indent += "  ";
     for (let i = 0; i < children.length; i++) {
-      output += renderNode(children[i], indent);
+      const { name, size, isDirectory, timestamp } = children[i];
+      const formattedName = isDirectory ? `${name}/` : name;
+      output += `${formatFileSize(size!)}\t${formatDate(timestamp!)}\t${formattedName}\n`;
     }
   }
 
