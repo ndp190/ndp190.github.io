@@ -5,7 +5,6 @@ import { Wrapper } from "../styles/Output.styled";
 
 function formatDate(timestamp: number): string {
   const date = new Date(timestamp);
-  // const options = { month: 'short', day: 'numeric' };
   const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
   return date.toLocaleString('en-US', options);
 }
@@ -41,9 +40,6 @@ function renderNode(node: FileNode): string {
 
 const Ls = () => {
   const { allFileNode } = useContext(homeContext);
-  // TODO use route to set current directory
-  // TODO update to looks more like ls (one level with suggestion)
-  // TODO support tree command
 
   return (
     <Wrapper>

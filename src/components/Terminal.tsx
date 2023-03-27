@@ -1,6 +1,7 @@
 import React, {
   createContext,
   useCallback,
+  useContext,
   useEffect,
   useRef,
   useState,
@@ -19,6 +20,7 @@ import {
   Wrapper,
 } from "./styles/Terminal.styled";
 import { argTab } from "../utils/funcs";
+import { homeContext } from "@/pages";
 
 type Command = {
   cmd: string;
@@ -41,6 +43,7 @@ export const commands: Command = [
   { cmd: "pwd", desc: "print current working directory", tab: 10 },
   { cmd: "ls", desc: "list directory contents", tab: 11 },
   { cmd: "tree", desc: "list contents of directories in a tree-like format", tab: 9 },
+  { cmd: "cd", desc: "change the current working directory", tab: 11 },
   // { cmd: "socials", desc: "check out my social accounts", tab: 6 },
   // { cmd: "whoami", desc: "about current user", tab: 7 },
 ];
@@ -105,6 +108,7 @@ const Terminal = () => {
     };
   }, [containerRef]);
 
+  const { allFileNode } = useContext(homeContext);
   // Keyboard Press
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     setRerender(false);
@@ -124,7 +128,7 @@ const Terminal = () => {
         }
       });
 
-      const returnedHints = argTab(inputVal, setInputVal, setHints, hintsCmds);
+      const returnedHints = argTab(inputVal, setInputVal, setHints, hintsCmds, allFileNode);
       hintsCmds = returnedHints ? [...hintsCmds, ...returnedHints] : hintsCmds;
 
       // if there are many command to autocomplete

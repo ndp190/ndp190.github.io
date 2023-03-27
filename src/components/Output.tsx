@@ -16,6 +16,7 @@ import { termContext } from "./Terminal";
 import { useContext } from "react";
 import Ls from "./commands/Ls";
 import Tree from "./commands/Tree";
+import Cd from "./commands/Cd";
 
 type Props = {
   index: number;
@@ -25,7 +26,7 @@ type Props = {
 const Output: React.FC<Props> = ({ index, cmd }) => {
   const { arg } = useContext(termContext);
 
-  const specialCmds = ["projects", "socials", "themes", "echo"];
+  const specialCmds = ["projects", "socials", "themes", "echo", "cd"];
 
   // return 'Usage: <cmd>' if command arg is not valid
   // eg: about tt
@@ -52,6 +53,7 @@ const Output: React.FC<Props> = ({ index, cmd }) => {
           whoami: <GeneralOutput>visitor</GeneralOutput>,
           ls: <Ls />,
           tree: <Tree />,
+          cd: <Cd />,
         }[cmd]
       }
     </OutputContainer>

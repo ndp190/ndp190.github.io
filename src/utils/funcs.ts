@@ -1,5 +1,7 @@
 import _ from "lodash";
 import theme from "../components/styles/themes";
+import { FileNode } from "./listFiles";
+import { navigateFileNode } from "./navigateFiles";
 
 /**
  * Generates html tabs
@@ -86,8 +88,25 @@ export const argTab = (
   inputVal: string,
   setInputVal: (value: React.SetStateAction<string>) => void,
   setHints: (value: React.SetStateAction<string[]>) => void,
-  hintsCmds: string[]
+  hintsCmds: string[],
+  fileNode: FileNode,
 ): string[] | undefined => {
+  // if input is 'cd'
+  if (inputVal.startsWith("cd ")) {
+    const query = inputVal.slice(3); // remove "cd " from input value
+    const suggestions = navigateFileNode(fileNode, query);
+    console.log('suggestions', suggestions);
+    setHints([]);
+    if (suggestions.length === 1) {
+      const prefixCutoffIndex = (inputVal.lastIndexOf("/") + 1) || (inputVal.lastIndexOf(" ") + 1);
+      const autoCompleteCd = inputVal.slice(0, prefixCutoffIndex) + suggestions[0];
+      setInputVal(autoCompleteCd);
+      return [];
+    } else {
+      return suggestions;
+    }
+  }
+
   // 1) if input is 'themes '
   if (inputVal === "themes ") {
     setInputVal(`themes set`);
