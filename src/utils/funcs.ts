@@ -95,7 +95,6 @@ export const argTab = (
   if (inputVal.startsWith("cd ")) {
     const query = inputVal.slice(3); // remove "cd " from input value
     const suggestions = navigateFileNode(fileNode, query);
-    console.log('suggestions', suggestions);
     setHints([]);
     if (suggestions.length === 1) {
       const prefixCutoffIndex = (inputVal.lastIndexOf("/") + 1) || (inputVal.lastIndexOf(" ") + 1);

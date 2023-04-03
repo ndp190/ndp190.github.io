@@ -11,6 +11,7 @@ import { termContext } from "../Terminal";
 const Cd = () => {
   const { history, rerender } = useContext(termContext);
   const { allFileNode } = useContext(homeContext);
+  // TODO need to store current node
 
   /* ===== get current command ===== */
   const currentCommand = getCurrentCmdArry(history);
@@ -25,6 +26,7 @@ const Cd = () => {
       console.log('in');
       // if directory not existed then show error
       // else redirect to that directory
+        // set current node to that directory
     }
     // if (checkThemeSwitch(rerender, currentCommand, myThemes)) {
     //   themeSwitcher?.(theme[currentCommand[2]]);
