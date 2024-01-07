@@ -5,14 +5,17 @@ import { createContext } from "react";
 
 interface HomeProps {
   allFileNode: FileNode;
+  currentFileNode: FileNode;
 }
 
 export const getStaticProps = async () => {
   const allFileNode = readDirectory('public/terminal');
+  const currentFileNode = allFileNode;
 
   return {
     props: {
       allFileNode,
+      currentFileNode,
     },
   };
 };
@@ -22,11 +25,15 @@ export const homeContext = createContext<HomeProps>({
     name: '',
     isDirectory: false,
   },
+  currentFileNode: {
+    name: '',
+    isDirectory: false,
+  },
 });
 
-const Home: NextPage<HomeProps> = ({ allFileNode }) => {
+const Home: NextPage<HomeProps> = ({ allFileNode, currentFileNode }) => {
   return (
-    <homeContext.Provider value={{ allFileNode }}>
+    <homeContext.Provider value={{ allFileNode, currentFileNode }}>
       <Terminal />
     </homeContext.Provider>
   );
