@@ -132,7 +132,7 @@ Screenshot của lệnh `/standup`:
 
 ## Có Thể Cải Thiện
 
-- Hỗ trợ nhiều lĩnh vực hơn trong workflow
-- Làm cho nó không phụ thuộc vào một nền tảng AI
+- Thêm tính năng cho trợ lý để hỗ trợ nhiều lĩnh vực công việc hơn
+- Update code để không bị phụ thuộc vào một nền tảng AI
 
 Nếu bạn đang tốn nhiều thời gian để quản lý task cá nhân hãy cân nhắc xây dựng cấu hình trợ lý của riêng mình. Claude Code làm điều này trở nên đơn giản đến ngạc nhiên.
