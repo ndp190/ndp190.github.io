@@ -3,7 +3,11 @@ import { FileNode } from "@/types/files";
 import { readDirectory } from "@/utils/listFiles";
 import { GetStaticPaths, GetStaticProps, NextPage } from "next";
 import { homeContext } from "..";
+import { languageContext } from "@/pages/_app";
+import { Language } from "@/utils/useLanguage";
 import Head from "next/head";
+import { useRouter } from "next/router";
+import { useContext, useEffect } from "react";
 import fs from "fs";
 import path from "path";
 
@@ -81,6 +85,17 @@ export const getStaticProps: GetStaticProps<BlogProps> = async ({ params }) => {
 };
 
 const BlogPage: NextPage<BlogProps> = ({ allFileNode, slug, meta }) => {
+  const router = useRouter();
+  const { setLanguage } = useContext(languageContext);
+
+  // Set language from query parameter if provided
+  useEffect(() => {
+    const langParam = router.query.language as string | undefined;
+    if (langParam === "vn" || langParam === "en") {
+      setLanguage(langParam as Language);
+    }
+  }, [router.query.language, setLanguage]);
+
   const baseUrl = 'https://ndp190.github.io';
   const pageUrl = `${baseUrl}/blog/${slug}`;
   const imageUrl = meta.image.startsWith('http') ? meta.image : `${baseUrl}${meta.image}`;

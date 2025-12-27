@@ -4,6 +4,7 @@ import remarkGfm from "remark-gfm";
 import styled from "styled-components";
 import { termContext } from "../Terminal";
 import { homeContext } from "@/pages";
+import { languageContext } from "@/pages/_app";
 import { findFileByPath } from "@/utils/fileUtils";
 import { UsageDiv } from "../styles/Output.styled";
 
@@ -153,6 +154,7 @@ const ErrorMessage = styled.div`
 const Cat: React.FC = () => {
   const { arg, index } = useContext(termContext);
   const { allFileNode } = useContext(homeContext);
+  const { language } = useContext(languageContext);
   const contentRef = useRef<HTMLDivElement>(null);
   const hasScrolled = useRef(false);
 
@@ -174,7 +176,17 @@ const Cat: React.FC = () => {
   }
 
   const filePath = arg[0];
-  const file = findFileByPath(allFileNode, filePath);
+
+  // Try to find language-specific version for markdown files
+  let file = null;
+  if (language === "vn" && filePath.endsWith(".md")) {
+    const vnPath = filePath.replace(/\.md$/, ".vn.md");
+    file = findFileByPath(allFileNode, vnPath);
+  }
+  // Fall back to original file if no language-specific version found
+  if (!file) {
+    file = findFileByPath(allFileNode, filePath);
+  }
 
   if (!file) {
     return <ErrorMessage>cat: {filePath}: No such file or directory</ErrorMessage>;

@@ -35,6 +35,7 @@ export const commands: Command = [
   { cmd: "welcome", desc: "display hero section", tab: 6 },
   { cmd: "help", desc: "check available commands", tab: 9 },
   { cmd: "themes", desc: "check available themes", tab: 7 },
+  { cmd: "language", desc: "switch language (en/vn)", tab: 5 },
   { cmd: "clear", desc: "clear the terminal", tab: 8 },
   { cmd: "echo", desc: "print out anything", tab: 9 },
   // { cmd: "education", desc: "my education background", tab: 4 },

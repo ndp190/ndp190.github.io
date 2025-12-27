@@ -2,23 +2,31 @@ import GlobalStyle from '@/components/styles/GlobalStyle';
 import { DefaultTheme } from '@/components/styles/Themes.styled';
 import '@/styles/globals.css'
 import { useTheme } from '@/utils/useTheme';
+import { useLanguage, Language } from '@/utils/useLanguage';
 import type { AppProps } from 'next/app'
 import { createContext, useEffect, useState } from 'react';
 import { ThemeProvider } from 'styled-components';
-
-// TODO remove later
-// export default function App({ Component, pageProps }: AppProps) {
-//   return <Component {...pageProps} />
-// }
 
 export const themeContext = createContext<
   ((switchTheme: DefaultTheme) => void) | null
 >(null);
 
+export const languageContext = createContext<{
+  language: Language;
+  setLanguage: (lang: Language) => void;
+}>({
+  language: "en",
+  setLanguage: () => {},
+});
+
 export default function App({ Component, pageProps }: AppProps) {
   // themes
   const { theme, themeLoaded, setMode } = useTheme();
   const [selectedTheme, setSelectedTheme] = useState(theme);
+
+  // language
+  const { language, languageLoaded, setLang } = useLanguage();
+  const [selectedLanguage, setSelectedLanguage] = useState<Language>(language);
 
   // Disable browser's default behavior
   // to prevent the page go up when Up Arrow is pressed
@@ -35,6 +43,10 @@ export default function App({ Component, pageProps }: AppProps) {
   useEffect(() => {
     setSelectedTheme(theme);
   }, [themeLoaded]);
+
+  useEffect(() => {
+    setSelectedLanguage(language);
+  }, [languageLoaded]);
 
   // Update meta tag colors when switching themes
   useEffect(() => {
@@ -56,16 +68,23 @@ export default function App({ Component, pageProps }: AppProps) {
     setMode(switchTheme);
   };
 
+  const languageSwitcher = (lang: Language) => {
+    setSelectedLanguage(lang);
+    setLang(lang);
+  };
+
   return (
     <>
       <h1 className="sr-only" aria-label="Terminal Portfolio">
         Terminal Portfolio
       </h1>
-      {themeLoaded && (
+      {themeLoaded && languageLoaded && (
         <ThemeProvider theme={selectedTheme}>
           <GlobalStyle />
           <themeContext.Provider value={themeSwitcher}>
-            <Component {...pageProps} />
+            <languageContext.Provider value={{ language: selectedLanguage, setLanguage: languageSwitcher }}>
+              <Component {...pageProps} />
+            </languageContext.Provider>
           </themeContext.Provider>
         </ThemeProvider>
       )}
