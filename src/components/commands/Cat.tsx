@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useEffect, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import styled from "styled-components";
@@ -108,8 +108,19 @@ const ErrorMessage = styled.div`
 `;
 
 const Cat: React.FC = () => {
-  const { arg } = useContext(termContext);
+  const { arg, index, rerender } = useContext(termContext);
   const { allFileNode } = useContext(homeContext);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // Scroll to the top of the content when newly rendered
+  useEffect(() => {
+    if (index === 0 && rerender && contentRef.current) {
+      // Small delay to ensure content is rendered
+      setTimeout(() => {
+        contentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
+    }
+  }, [index, rerender]);
 
   // Check if file path is provided
   if (arg.length === 0) {
@@ -132,7 +143,7 @@ const Cat: React.FC = () => {
   }
 
   return (
-    <MarkdownWrapper>
+    <MarkdownWrapper ref={contentRef}>
       <ReactMarkdown remarkPlugins={[remarkGfm]}>
         {file.content}
       </ReactMarkdown>
