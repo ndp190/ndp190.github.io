@@ -33,6 +33,8 @@ Type `help` in the terminal to see all available commands.
 | `npm run build` | Production build |
 | `npm run lint` | Run ESLint |
 | `npm run start` | Start production server |
+| `npm test` | Run tests |
+| `npm run test:watch` | Run tests in watch mode |
 
 ## Architecture
 

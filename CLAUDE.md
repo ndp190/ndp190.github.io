@@ -13,9 +13,11 @@ npm run dev      # Start development server at localhost:3000
 npm run build    # Production build
 npm run lint     # Run ESLint
 npm run start    # Start production server
+npm test         # Run tests
+npm run test:watch  # Run tests in watch mode
 ```
 
-No test framework is configured.
+Tests are located in `src/__tests__/` using Jest and React Testing Library.
 
 ## Architecture
 
