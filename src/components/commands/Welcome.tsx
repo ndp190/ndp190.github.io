@@ -1,4 +1,4 @@
-import { useContext } from "react";
+import { useContext, useState, useEffect } from "react";
 import {
   BlogLink,
   BlogList,
@@ -27,7 +27,6 @@ const puns = [
  "Phuc-ing amazing, this blog overflowing with creative brainstorming.",
  "Phuc'ed with words, sharing my life through this blog, with so many tales to be heard."
 ];
-const pun = puns[Math.floor(Math.random() * puns.length)];
 
 // Get blog posts from file tree
 function getBlogPosts(node: FileNode): FileNode[] {
@@ -72,6 +71,12 @@ const Welcome: React.FC = () => {
   const { allFileNode } = useContext(homeContext);
   const { executeCommand } = useContext(termContext);
   const blogPosts = getBlogPosts(allFileNode);
+
+  // Use fixed initial pun to prevent hydration mismatch, then randomize on client
+  const [pun, setPun] = useState(puns[0]);
+  useEffect(() => {
+    setPun(puns[Math.floor(Math.random() * puns.length)]);
+  }, []);
 
   const handleBlogClick = (filePath: string) => {
     if (executeCommand) {

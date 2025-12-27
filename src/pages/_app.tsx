@@ -73,21 +73,23 @@ export default function App({ Component, pageProps }: AppProps) {
     setLang(lang);
   };
 
+  // Use default theme for SSR/SSG, then hydrate with stored theme
+  const currentTheme = themeLoaded ? selectedTheme : theme;
+  const currentLanguage = languageLoaded ? selectedLanguage : language;
+
   return (
     <>
       <h1 className="sr-only" aria-label="Terminal Portfolio">
         Terminal Portfolio
       </h1>
-      {themeLoaded && languageLoaded && (
-        <ThemeProvider theme={selectedTheme}>
-          <GlobalStyle />
-          <themeContext.Provider value={themeSwitcher}>
-            <languageContext.Provider value={{ language: selectedLanguage, setLanguage: languageSwitcher }}>
-              <Component {...pageProps} />
-            </languageContext.Provider>
-          </themeContext.Provider>
-        </ThemeProvider>
-      )}
+      <ThemeProvider theme={currentTheme}>
+        <GlobalStyle />
+        <themeContext.Provider value={themeSwitcher}>
+          <languageContext.Provider value={{ language: currentLanguage, setLanguage: languageSwitcher }}>
+            <Component {...pageProps} />
+          </languageContext.Provider>
+        </themeContext.Provider>
+      </ThemeProvider>
     </>
   );
 }
