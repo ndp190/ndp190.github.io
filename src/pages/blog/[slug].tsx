@@ -68,17 +68,22 @@ export const getStaticPaths: GetStaticPaths = async () => {
 
 export const getStaticProps: GetStaticProps<BlogProps> = async ({ params }) => {
   const allFileNode = readDirectory('public/terminal');
-  const slug = params?.slug as string;
+  const rawSlug = params?.slug as string;
+
+  // Handle Vietnamese slugs (e.g., hello-world.vn -> hello-world.vn.md)
+  const isVietnamese = rawSlug.endsWith('.vn');
+  const baseSlug = isVietnamese ? rawSlug.slice(0, -3) : rawSlug;
+  const fileName = isVietnamese ? `${baseSlug}.vn.md` : `${rawSlug}.md`;
 
   // Read markdown content to extract meta
-  const filePath = path.join(process.cwd(), 'public/terminal/blog', `${slug}.md`);
+  const filePath = path.join(process.cwd(), 'public/terminal/blog', fileName);
   const content = fs.readFileSync(filePath, 'utf-8');
-  const meta = extractBlogMeta(content, slug);
+  const meta = extractBlogMeta(content, baseSlug);
 
   return {
     props: {
       allFileNode,
-      slug,
+      slug: rawSlug,
       meta,
     },
   };
@@ -88,15 +93,22 @@ const BlogPage: NextPage<BlogProps> = ({ allFileNode, slug, meta }) => {
   const router = useRouter();
   const { setLanguage } = useContext(languageContext);
 
-  // Set language from query parameter if provided
+  // Handle Vietnamese slugs for file path
+  const isVietnamese = slug.endsWith('.vn');
+  const baseSlug = isVietnamese ? slug.slice(0, -3) : slug;
+  const filePath = isVietnamese ? `blog/${baseSlug}.vn.md` : `blog/${slug}.md`;
+
+  // Set language from query parameter or slug
   useEffect(() => {
     const langParam = router.query.language as string | undefined;
     if (langParam === "vn" || langParam === "en") {
       setLanguage(langParam as Language);
+    } else if (isVietnamese) {
+      setLanguage("vn");
     }
-  }, [router.query.language, setLanguage]);
+  }, [router.query.language, setLanguage, isVietnamese]);
 
-  const baseUrl = 'https://ndp190.github.io';
+  const baseUrl = 'https://nikkdev.com';
   const pageUrl = `${baseUrl}/blog/${slug}`;
   const imageUrl = meta.image.startsWith('http') ? meta.image : `${baseUrl}${meta.image}`;
 
@@ -121,7 +133,7 @@ const BlogPage: NextPage<BlogProps> = ({ allFileNode, slug, meta }) => {
         <meta name="twitter:image" content={imageUrl} />
       </Head>
       <homeContext.Provider value={{ allFileNode }}>
-        <Terminal initialCommand={`cat blog/${slug}.md`} />
+        <Terminal initialCommand={`cat ${filePath}`} />
       </homeContext.Provider>
     </>
   );
