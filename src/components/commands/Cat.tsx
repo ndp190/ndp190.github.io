@@ -8,8 +8,7 @@ import { findFileByPath } from "@/utils/fileUtils";
 import { UsageDiv } from "../styles/Output.styled";
 
 const MarkdownWrapper = styled.div`
-  margin-top: 0.5rem;
-  margin-bottom: 1rem;
+  margin: 0.5rem auto 1rem;
   line-height: 1.75;
   max-width: 80ch;
 
@@ -122,19 +121,11 @@ const MarkdownWrapper = styled.div`
   }
 
   img {
-    max-width: 60%;
+    max-width: 100%;
     height: auto;
     margin: 1rem 0;
     border-radius: 4px;
     border: 1px solid ${({ theme }) => theme.colors.text[300]}40;
-
-    @media (max-width: 1024px) {
-      max-width: 80%;
-    }
-
-    @media (max-width: 768px) {
-      max-width: 100%;
-    }
   }
 
   strong {
