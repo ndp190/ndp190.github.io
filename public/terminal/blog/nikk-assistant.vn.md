@@ -82,7 +82,7 @@ Sau đó mình tạo các lệnh (Claude commands) và test lại + hoàn thiệ
 
 **`/standup`** - Routine buổi sáng trong một lệnh:
 - Truy vấn Taskwarrior để lấy task đã hoàn thành và đang chờ
-- Lấy hoạt động JIRA gần đây của tôi
+- Lấy hoạt động JIRA gần đây của mình
 - Lấy ghi chú Obsidian liên quan
 - Tạo tóm tắt standup
 
@@ -130,9 +130,9 @@ Screenshot của lệnh `/standup`:
 
 1. **Bắt đầu nhỏ** - Sau prompt đầu tiên để tạo CLAUDE.md, mình tạo từng command một lúc, bắt đầu với command `/standup`
 2. **MCP rất mạnh mẽ** - Tích hợp Atlassian MCP làm việc truy cập JIRA trở nên đơn giản
-3. **Claude Code rất linh hoạt** - Các lệnh tùy chỉnh cho phép mở rộng Claude theo những cách tôi chưa tưởng tượng
+3. **Claude Code rất linh hoạt** - Các lệnh tùy chỉnh cho phép mở rộng Claude theo những cách mình chưa tưởng tượng trước đây
 
-## Có Thể Cải Thiện
+## Điểm Cần Cải Tiến
 
 - Thêm tính năng cho trợ lý để hỗ trợ nhiều lĩnh vực công việc hơn
 - Update code để không bị phụ thuộc vào một nền tảng AI
