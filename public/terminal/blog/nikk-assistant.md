@@ -76,6 +76,8 @@ First, search my Atlassian/JIRA to find:
 Then create a comprehensive CLAUDE.md that will help Claude Code assist me effectively with this workflow.
 ```
 
+Then I created individual command files for each action I needed, testing and refining as I went.
+
 ### Key Commands
 
 **`/standup`** - My morning routine in one command. It:

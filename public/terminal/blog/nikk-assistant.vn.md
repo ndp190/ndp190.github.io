@@ -76,6 +76,8 @@ First, search my Atlassian/JIRA to find:
 Then create a comprehensive CLAUDE.md that will help Claude Code assist me effectively with this workflow.
 ```
 
+Sau đó mình tạo các lệnh (Claude commands) và test lại + hoàn thiện dần các lệnh này.
+
 ### Các Lệnh Chính
 
 **`/standup`** - Routine buổi sáng trong một lệnh:
