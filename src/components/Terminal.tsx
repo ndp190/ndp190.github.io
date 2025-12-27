@@ -115,7 +115,7 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
 
   // focus on input when terminal is clicked
   const handleDivClick = () => {
-    inputRef.current && inputRef.current.focus();
+    inputRef.current && inputRef.current.focus({ preventScroll: true });
   };
   useEffect(() => {
     document.addEventListener("click", handleDivClick);
@@ -219,7 +219,7 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
   // For caret position at the end
   useEffect(() => {
     const timer = setTimeout(() => {
-      inputRef?.current?.focus();
+      inputRef?.current?.focus({ preventScroll: true });
     }, 1);
     return () => clearTimeout(timer);
   }, [inputRef, inputVal, pointer]);
