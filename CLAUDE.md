@@ -43,6 +43,16 @@ Uses styled-components with 7 predefined themes (dark, light, blue-matrix, espre
 
 The `public/terminal/` directory structure is read at build time and passed to components via context. This enables the `ls` and `tree` commands to display a mock file system.
 
+### Blog Feature
+
+Blog posts are markdown files stored in `public/terminal/blog/`. The `cat` command renders markdown with full support for:
+- Headers, lists, tables
+- Code blocks with syntax highlighting
+- Images (rendered inline)
+- Links, blockquotes, bold/italic text
+
+To add a new blog post, create a `.md` file in `public/terminal/blog/`.
+
 ## Deployment
 
 GitHub Actions workflow (`.github/workflows/nextjs.yml`) builds and exports static HTML on push to master, deploying to GitHub Pages.

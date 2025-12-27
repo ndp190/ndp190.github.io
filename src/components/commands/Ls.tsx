@@ -1,5 +1,5 @@
 import { homeContext } from "@/pages";
-import { FileNode } from "@/utils/listFiles";
+import { FileNode } from "@/types/files";
 import React, { useContext } from "react";
 import { Wrapper } from "../styles/Output.styled";
 

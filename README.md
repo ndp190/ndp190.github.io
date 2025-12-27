@@ -8,6 +8,7 @@ A personal portfolio website built as an interactive terminal emulator using Nex
 - Tab autocomplete for commands
 - Multiple color themes (dark, light, blue-matrix, espresso, green-goblin, ubuntu, nikk)
 - Mock file system navigation with `ls` and `tree` commands
+- Blog support with markdown rendering via `cat` command
 
 ## Getting Started
 
@@ -24,6 +25,17 @@ Open [http://localhost:3000](http://localhost:3000) to see the terminal interfac
 ## Available Commands
 
 Type `help` in the terminal to see all available commands.
+
+### Blog
+
+View blog posts using the `cat` command:
+
+```bash
+cat blog/hello-world.md
+cat blog/terminal-tips.md
+```
+
+Blog posts are stored as markdown files in `public/terminal/blog/`.
 
 ## Scripts
 

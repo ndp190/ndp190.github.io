@@ -1,5 +1,6 @@
 import Terminal from "@/components/Terminal";
-import { FileNode, readDirectory } from "@/utils/listFiles";
+import { FileNode } from "@/types/files";
+import { readDirectory } from "@/utils/listFiles";
 import { NextPage } from "next";
 import { createContext } from "react";
 
@@ -20,6 +21,7 @@ export const getStaticProps = async () => {
 export const homeContext = createContext<HomeProps>({
   allFileNode: {
     name: '',
+    path: '',
     isDirectory: false,
   },
 });

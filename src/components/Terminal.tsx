@@ -1,6 +1,7 @@
 import React, {
   createContext,
   useCallback,
+  useContext,
   useEffect,
   useRef,
   useState,
@@ -19,6 +20,8 @@ import {
   Wrapper,
 } from "./styles/Terminal.styled";
 import { argTab } from "../utils/funcs";
+import { homeContext } from "@/pages";
+import { getMatchingPaths } from "@/utils/fileUtils";
 
 type Command = {
   cmd: string;
@@ -28,6 +31,7 @@ type Command = {
 
 export const commands: Command = [
   { cmd: "about", desc: "about me", tab: 8 },
+  { cmd: "cat", desc: "display file contents", tab: 10 },
   { cmd: "welcome", desc: "display hero section", tab: 6 },
   { cmd: "help", desc: "check available commands", tab: 9 },
   { cmd: "themes", desc: "check available themes", tab: 7 },
@@ -51,6 +55,7 @@ interface Term {
   rerender: boolean;
   index: number;
   clearHistory?: () => void;
+  executeCommand?: (cmd: string) => void;
 };
 
 
@@ -65,6 +70,7 @@ export const termContext = createContext<Term>({
 const Terminal = () => {
   const containerRef = useRef(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { allFileNode } = useContext(homeContext);
 
   const [inputVal, setInputVal] = useState("");
   const [cmdHistory, setCmdHistory] = useState<string[]>(["welcome"]);
@@ -92,6 +98,14 @@ const Terminal = () => {
   const clearHistory = () => {
     setCmdHistory([]);
     setHints([]);
+  };
+
+  const executeCommand = (cmd: string) => {
+    setCmdHistory([cmd, ...cmdHistory]);
+    setInputVal("");
+    setRerender(true);
+    setHints([]);
+    setPointer(-1);
   };
 
   // focus on input when terminal is clicked
@@ -123,6 +137,22 @@ const Terminal = () => {
           hintsCmds = [...hintsCmds, cmd];
         }
       });
+
+      // Handle cat command autocomplete
+      const inputParts = _.split(inputVal, " ");
+      if (inputParts[0] === "cat") {
+        const partialPath = inputParts[1] || "";
+        const matchingPaths = getMatchingPaths(allFileNode, partialPath);
+
+        if (matchingPaths.length === 1) {
+          setInputVal(`cat ${matchingPaths[0]}`);
+          setHints([]);
+          return;
+        } else if (matchingPaths.length > 1) {
+          setHints(matchingPaths);
+          return;
+        }
+      }
 
       const returnedHints = argTab(inputVal, setInputVal, setHints, hintsCmds);
       hintsCmds = returnedHints ? [...hintsCmds, ...returnedHints] : hintsCmds;
@@ -227,6 +257,7 @@ const Terminal = () => {
           rerender,
           index,
           clearHistory,
+          executeCommand,
         };
         return (
           <div key={_.uniqueId(`${cmdH}_`)}>

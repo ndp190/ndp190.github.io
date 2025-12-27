@@ -1,4 +1,5 @@
 import About from "./commands/About";
+import Cat from "./commands/Cat";
 import Clear from "./commands/Clear";
 import Echo from "./commands/Echo";
 import Education from "./commands/Education";
@@ -25,7 +26,7 @@ type Props = {
 const Output: React.FC<Props> = ({ index, cmd }) => {
   const { arg } = useContext(termContext);
 
-  const specialCmds = ["projects", "socials", "themes", "echo"];
+  const specialCmds = ["projects", "socials", "themes", "echo", "cat"];
 
   // return 'Usage: <cmd>' if command arg is not valid
   // eg: about tt
@@ -37,6 +38,7 @@ const Output: React.FC<Props> = ({ index, cmd }) => {
       {
         {
           about: <About />,
+          cat: <Cat />,
           clear: <Clear />,
           echo: <Echo />,
           education: <Education />,

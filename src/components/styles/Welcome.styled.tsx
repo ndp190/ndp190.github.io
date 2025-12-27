@@ -63,3 +63,22 @@ export const Link = styled.a`
     border-bottom-style: solid;
   }
 `;
+
+export const BlogLink = styled.span`
+  color: ${({ theme }) => theme.colors?.secondary};
+  cursor: pointer;
+  border-bottom: 1px dashed ${({ theme }) => theme.colors?.secondary};
+
+  &:hover {
+    border-bottom-style: solid;
+  }
+`;
+
+export const BlogTree = styled.div`
+  margin: 0.5rem 0;
+  font-family: monospace;
+
+  .tree-line {
+    color: ${({ theme }) => theme.colors?.text?.[300]};
+  }
+`;

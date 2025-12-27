@@ -1,4 +1,7 @@
+import { useContext } from "react";
 import {
+  BlogLink,
+  BlogTree,
   Cmd,
   HeroContainer,
   Link,
@@ -8,6 +11,9 @@ import {
   PreWrapper,
   Seperator,
 } from "../styles/Welcome.styled";
+import { homeContext } from "@/pages";
+import { termContext } from "../Terminal";
+import { FileNode } from "@/types/files";
 
 const puns = [
  "Phuc and behold, a blog full of untold stories told.",
@@ -23,13 +29,37 @@ const puns = [
 ];
 const pun = puns[Math.floor(Math.random() * puns.length)];
 
+// Get blog posts from file tree
+function getBlogPosts(node: FileNode): FileNode[] {
+  if (node.name === 'blog' && node.isDirectory && node.children) {
+    return node.children.filter(child => !child.isDirectory && child.name.endsWith('.md'));
+  }
+  if (node.children) {
+    for (const child of node.children) {
+      const posts = getBlogPosts(child);
+      if (posts.length > 0) return posts;
+    }
+  }
+  return [];
+}
+
 const Welcome: React.FC = () => {
+  const { allFileNode } = useContext(homeContext);
+  const { executeCommand } = useContext(termContext);
+  const blogPosts = getBlogPosts(allFileNode);
+
+  const handleBlogClick = (filePath: string) => {
+    if (executeCommand) {
+      executeCommand(`cat ${filePath}`);
+    }
+  };
+
   return (
     <HeroContainer data-testid="welcome">
       <div className="info-section">
         <PreName>
-          {`        
- ____ ____ ____ ____ 
+          {`
+ ____ ____ ____ ____
 ||N |||i |||k |||k ||
 ||  |||  |||  |||  ||
 || P||| h||| u||| c||
@@ -41,7 +71,7 @@ const Welcome: React.FC = () => {
         <PreWrapper>
           <PreNameMobile>
             {`
- ____ ____ ____ ____ 
+ ____ ____ ____ ____
 ||N |||i |||k |||k ||
 ||  |||  |||  |||  ||
 || P||| h||| u||| c||
@@ -53,6 +83,28 @@ const Welcome: React.FC = () => {
         </PreWrapper>
         <div>{pun}</div>
         <Seperator>----</Seperator>
+        {blogPosts.length > 0 && (
+          <>
+            <div>Recent blog posts:</div>
+            <BlogTree>
+              <div><span className="tree-line">blog/</span></div>
+              {blogPosts.map((post, index) => {
+                const isLast = index === blogPosts.length - 1;
+                const prefix = isLast ? '└── ' : '├── ';
+                const filePath = post.path.replace(/^terminal\//, '');
+                return (
+                  <div key={post.name}>
+                    <span className="tree-line">{prefix}</span>
+                    <BlogLink onClick={() => handleBlogClick(filePath)}>
+                      {post.name}
+                    </BlogLink>
+                  </div>
+                );
+              })}
+            </BlogTree>
+            <Seperator>----</Seperator>
+          </>
+        )}
         <div>
           This project's source code can be found in {" "}
           <Link href="https://github.com/ndp190/ndp190.github.io">
@@ -75,23 +127,23 @@ const Welcome: React.FC = () => {
       <div className="illu-section">
         <PreImg>
           {`
-                                                    
-                %@@@@@@@&@&#            
-             @@@@@@@@@@@@@@@@/          
-           @@@@@&@@&&&@&&@@@@@@(        
-         @@@@@#(//*///**/(#&&@@@@       
-         @@@#/***,,,,,,,,***#&@@@       
-         @&%(///**,,,,,***///(&@&       
-         &&(/(******,,******//#&        
-         .&(/((*//**,***///(//(%**      
-        /////**,,**/***,,,,,**//,/      
-         */(/**,,,//*/*/,,,**/((*       
-          ////**************//          
-            (//**///***/****/(          
-             (//****,,,***//(           
-             /(///***/////(/*           
-          ,****//////////****           
-       .,,///********,******//*(..      
+
+                %@@@@@@@&@&#
+             @@@@@@@@@@@@@@@@/
+           @@@@@&@@&&&@&&@@@@@@(
+         @@@@@#(//*///**/(#&&@@@@
+         @@@#/***,,,,,,,,***#&@@@
+         @&%(///**,,,,,***///(&@&
+         &&(/(******,,******//#&
+         .&(/((*//**,***///(//(%**
+        /////**,,**/***,,,,,**//,/
+         */(/**,,,//*/*/,,,**/((*
+          ////**************//
+            (//**///***/****/(
+             (//****,,,***//(
+             /(///***/////(/*
+          ,****//////////****
+       .,,///********,******//*(..
 ,,,,,,,,,.,.************,*****.....,,,,,
 ,,,,,,,,,,,.,...*******,,*......,.,,,.,.
          `}

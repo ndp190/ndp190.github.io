@@ -1,6 +1,9 @@
 import fs from "fs";
 import path from "path";
 
+export type { FileNode } from "../types/files";
+import type { FileNode } from "../types/files";
+
 export function listFiles(filePath: string): string[] {
   const absolutePath = path.join(process.cwd(), "public", filePath);
   const files = fs.readdirSync(absolutePath);
@@ -10,24 +13,17 @@ export function listFiles(filePath: string): string[] {
   });
 }
 
-export interface FileNode {
-  name: string;
-  isDirectory: boolean;
-  size?: number;
-  timestamp?: number;
-  children?: FileNode[];
-}
-
-export function readDirectory(directoryPath: string): FileNode {
+export function readDirectory(directoryPath: string, relativePath: string = ''): FileNode {
   const name = path.basename(directoryPath);
   const isDirectory = fs.lstatSync(directoryPath).isDirectory();
-  const fileNode: FileNode = { name, isDirectory };
+  const currentPath = relativePath ? `${relativePath}/${name}` : name;
+  const fileNode: FileNode = { name, path: currentPath, isDirectory };
 
   if (isDirectory) {
     const fileNames = fs.readdirSync(directoryPath);
     const children = fileNames.map((fileName) => {
       const filePath = path.join(directoryPath, fileName);
-      return readDirectory(filePath);
+      return readDirectory(filePath, currentPath);
     });
 
     const stats = fs.statSync(directoryPath);
@@ -39,6 +35,11 @@ export function readDirectory(directoryPath: string): FileNode {
     const stats = fs.statSync(directoryPath);
     fileNode.size = stats.size;
     fileNode.timestamp = stats.mtimeMs;
+
+    // Read content for markdown files
+    if (name.endsWith('.md')) {
+      fileNode.content = fs.readFileSync(directoryPath, 'utf-8');
+    }
   }
 
   return fileNode;
