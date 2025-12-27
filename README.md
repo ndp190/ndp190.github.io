@@ -35,6 +35,10 @@ cat blog/hello-world.md
 cat blog/terminal-tips.md
 ```
 
+Or access directly via URL:
+- [/blog/hello-world](https://ndp190.github.io/blog/hello-world)
+- [/blog/terminal-tips](https://ndp190.github.io/blog/terminal-tips)
+
 Blog posts are stored as markdown files in `public/terminal/blog/`.
 
 ## Scripts

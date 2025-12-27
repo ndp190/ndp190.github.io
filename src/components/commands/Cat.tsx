@@ -111,16 +111,25 @@ const Cat: React.FC = () => {
   const { arg, index, rerender } = useContext(termContext);
   const { allFileNode } = useContext(homeContext);
   const contentRef = useRef<HTMLDivElement>(null);
+  const hasScrolled = useRef(false);
 
-  // Scroll to the top of the content when newly rendered
+  // Scroll to the top of the content when newly rendered or on initial load
   useEffect(() => {
-    if (index === 0 && rerender && contentRef.current) {
+    if (index === 0 && contentRef.current && !hasScrolled.current) {
       // Small delay to ensure content is rendered
       setTimeout(() => {
-        contentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        contentRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' });
+        hasScrolled.current = true;
       }, 50);
     }
-  }, [index, rerender]);
+  }, [index]);
+
+  // Reset scroll flag when rerender changes (new command executed)
+  useEffect(() => {
+    if (rerender) {
+      hasScrolled.current = false;
+    }
+  }, [rerender]);
 
   // Check if file path is provided
   if (arg.length === 0) {

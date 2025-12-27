@@ -67,13 +67,17 @@ export const termContext = createContext<Term>({
 });
 
 
-const Terminal = () => {
+interface TerminalProps {
+  initialCommand?: string;
+}
+
+const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
   const containerRef = useRef(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const { allFileNode } = useContext(homeContext);
 
   const [inputVal, setInputVal] = useState("");
-  const [cmdHistory, setCmdHistory] = useState<string[]>(["welcome"]);
+  const [cmdHistory, setCmdHistory] = useState<string[]>([initialCommand]);
   const [rerender, setRerender] = useState(false);
   const [hints, setHints] = useState<string[]>([]);
   const [pointer, setPointer] = useState(-1);
