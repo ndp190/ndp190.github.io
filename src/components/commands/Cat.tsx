@@ -116,23 +116,22 @@ const ErrorMessage = styled.div`
 `;
 
 const Cat: React.FC = () => {
-  const { arg, index, history } = useContext(termContext);
+  const { arg, index } = useContext(termContext);
   const { allFileNode } = useContext(homeContext);
   const contentRef = useRef<HTMLDivElement>(null);
   const hasScrolled = useRef(false);
 
-  // Scroll to the top of the content only on initial page load (for direct blog URLs)
-  // We detect initial page load by checking if history has only 1 item (the initialCommand)
-  // When user types a command, history will have 2+ items (new command + previous commands)
+  // Scroll to the top of the content when cat command is first executed
+  // Only scroll when this is the most recent command (index === 0)
+  // hasScrolled ref prevents scrolling again on re-renders
   useEffect(() => {
-    const isInitialPageLoad = history.length === 1 && index === 0;
-    if (isInitialPageLoad && contentRef.current && !hasScrolled.current) {
+    if (index === 0 && contentRef.current && !hasScrolled.current) {
       hasScrolled.current = true;
       setTimeout(() => {
         contentRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' });
       }, 50);
     }
-  }, [history.length, index]);
+  }, [index]);
 
   // Check if file path is provided
   if (arg.length === 0) {

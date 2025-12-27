@@ -263,8 +263,10 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
           clearHistory,
           executeCommand,
         };
+        // Use stable key: position from end stays constant as new commands are prepended
+        const stableKey = `${cmdHistory.length - index}-${cmdH}`;
         return (
-          <div key={_.uniqueId(`${cmdH}_`)}>
+          <div key={stableKey}>
             <div>
               <TermInfo />
               <MobileBr />

@@ -105,14 +105,13 @@ describe('Cat component', () => {
   });
 
   describe('scroll behavior', () => {
-    it('scrolls to content on initial page load (history.length === 1)', async () => {
+    it('scrolls to content on initial page load (direct URL access)', async () => {
       renderCat({
         arg: ['blog/hello-world.md'],
-        history: ['cat blog/hello-world.md'], // Only 1 item = initial page load
+        history: ['cat blog/hello-world.md'],
         index: 0,
       });
 
-      // Fast-forward timers to trigger the setTimeout
       jest.advanceTimersByTime(100);
 
       await waitFor(() => {
@@ -123,17 +122,21 @@ describe('Cat component', () => {
       });
     });
 
-    it('does NOT scroll when user types cat command (history.length > 1)', async () => {
+    it('scrolls to content when user types cat command', async () => {
       renderCat({
         arg: ['blog/hello-world.md'],
-        history: ['cat blog/hello-world.md', 'welcome'], // 2 items = user typed command
-        index: 0,
+        history: ['cat blog/hello-world.md', 'welcome'], // User typed cat after welcome
+        index: 0, // Cat is the most recent command
       });
 
       jest.advanceTimersByTime(100);
 
-      // Should NOT have been called
-      expect(mockScrollIntoView).not.toHaveBeenCalled();
+      await waitFor(() => {
+        expect(mockScrollIntoView).toHaveBeenCalledWith({
+          behavior: 'auto',
+          block: 'start',
+        });
+      });
     });
 
     it('does NOT scroll when cat is not the most recent command (index > 0)', async () => {
@@ -148,22 +151,22 @@ describe('Cat component', () => {
       expect(mockScrollIntoView).not.toHaveBeenCalled();
     });
 
-    it('does NOT scroll when user types after running cat (simulating rerender cycle)', async () => {
-      // First render: cat command just executed
+    it('does NOT scroll again when user types after running cat (no flickering)', async () => {
+      // First render: cat command just executed, scrolls once
       const { rerender } = renderCat({
         arg: ['blog/hello-world.md'],
-        history: ['cat blog/hello-world.md', 'welcome'], // User already had previous command
+        history: ['cat blog/hello-world.md', 'welcome'],
         index: 0,
         rerender: true,
       });
 
       jest.advanceTimersByTime(100);
 
-      // Should not scroll because history.length > 1
-      expect(mockScrollIntoView).not.toHaveBeenCalled();
+      // Should have scrolled once
+      expect(mockScrollIntoView).toHaveBeenCalledTimes(1);
 
       // Simulate user starting to type (rerender becomes false)
-      // This was the bug - it used to scroll when rerender changed
+      // This should NOT cause another scroll - that was the flickering bug
       rerender(
         <ThemeProvider theme={defaultTheme}>
           <homeContext.Provider value={{ allFileNode: mockFileTree }}>
@@ -185,14 +188,14 @@ describe('Cat component', () => {
 
       jest.advanceTimersByTime(100);
 
-      // Should still NOT scroll - this was the flickering bug
-      expect(mockScrollIntoView).not.toHaveBeenCalled();
+      // Should still only have scrolled once - no flickering
+      expect(mockScrollIntoView).toHaveBeenCalledTimes(1);
     });
 
     it('only scrolls once even with multiple rerenders', async () => {
       const { rerender } = renderCat({
         arg: ['blog/hello-world.md'],
-        history: ['cat blog/hello-world.md'], // Initial page load
+        history: ['cat blog/hello-world.md'],
         index: 0,
       });
 
