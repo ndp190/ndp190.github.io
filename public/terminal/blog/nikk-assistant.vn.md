@@ -1,6 +1,6 @@
 # Xây Dựng Trợ Lý AI Cá Nhân Với Claude Code
 
-Là một DevOps Engineer, mình sử dụng vài công cụ hàng ngày để quản lý task: JIRA để theo dõi công việc ở công ty, Taskwarrior cho todo công việc/cá nhân, và Obsidian để ghi chú chi tiết. Việc chuyển đổi ngữ cảnh giữa các hệ thống này làm giảm kha khá năng suất của mình. Vì vậy mình đã xây dựng [nikk-assistant](https://github.com/ndp190/nikk-assistant), một trợ lý Claude Code với các lệnh được xây dựng sẵn để hỗ trợ quản lý công việc hàng ngày.
+Là một Developer, việc liên tục thao tác và thuyển đổi ngữ cảnh giữa các hệ thống quản lý task (JIRA, Obsidian, Taskwarrior) làm giảm kha khá năng suất của mình. Vì vậy mình đã xây dựng [nikk-assistant](https://github.com/ndp190/nikk-assistant), một trợ lý Claude Code với các lệnh được xây dựng sẵn để hỗ trợ quản lý công việc hàng ngày.
 
 ## Vấn Đề
 

@@ -1,6 +1,6 @@
 # Building My Personal AI Work Assistant with Claude Code
 
-As a DevOps Engineer, I juggle multiple tools daily to manage my task: JIRA for work tracking, Taskwarrior for personal todos, and Obsidian for detailed notes. Context switching between these systems was eating into my productivity. So I built [nikk-assistant](https://github.com/ndp190/nikk-assistant), a Claude Code assistant with prebuilt commands to assist me in managing my workday.
+As a Developer, I juggle multiple tools daily to manage my task: JIRA for work tracking, Taskwarrior for personal todos, and Obsidian for detailed notes. Context switching between these systems was eating into my productivity. So I built [nikk-assistant](https://github.com/ndp190/nikk-assistant), a Claude Code assistant with prebuilt commands to assist me in managing my workday.
 
 ## The Problem
 
