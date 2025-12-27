@@ -71,44 +71,9 @@ I work at Go1 as a technical/infrastructure role. My work tracking workflow:
 
 First, search my Atlassian/JIRA to find:
 - My JIRA projects I have access to
-- My current ope
-```
+- My current open tickets to understand my work context
 
-### Key Commands
-
-**`/standup`** - My morning routine in one command. It:
-- Queries Taskwarrior for completed and pending tasks
-- Fetches my recent JIRA activity
-- Pulls relevant Obsidian notes
-- Generates a formatted standup summary
-
-**`/todo`** - A unified view of all my pending work across systems. In-progress items appear first, followed by to-do items, with duplicates automatically filtered out.
-
-**`/jira <ticket>`** - Fetches ticket details including status, description, and recent comments. If I have Obsidian & Taskwarrior notes linked to the ticket, those appear too.
-
-**`/add-task`** and **`/add-jira-task`** - Create tasks that sync across systems with proper tagging.
-
-## Tech Stack
-
-- **Claude Code** - The AI assistant framework, gluing everything together
-- **MCP (Model Context Protocol)** - For Atlassian/JIRA integration
-- **Taskwarrior** - Local CLI task management
-- **Obsidian** - Note-taking
-
-## Architecture
-
-The project is simple:
-
-```
-nikk-assistant/
-├── CLAUDE.md           # Configuration and guidelines
-├── .claude/
-│   ├── settings.local.json  # Permissions for MCP tools
-│   └── commands/            # Custom command definitions
-│       ├── standup.md
-│       ├── todo.md
-│       ├── jira.md
-│       └── ...
+Then create a comprehensive CLAUDE.md that will help Claude Code assist me effectively with this workflow.
 ```
 
 ### Các Lệnh Chính

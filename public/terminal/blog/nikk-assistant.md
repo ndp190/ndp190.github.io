@@ -71,7 +71,9 @@ I work at Go1 as a technical/infrastructure role. My work tracking workflow:
 
 First, search my Atlassian/JIRA to find:
 - My JIRA projects I have access to
-- My current ope
+- My current open tickets to understand my work context
+
+Then create a comprehensive CLAUDE.md that will help Claude Code assist me effectively with this workflow.
 ```
 
 ### Key Commands
