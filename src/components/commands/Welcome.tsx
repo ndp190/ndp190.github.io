@@ -1,7 +1,7 @@
 import { useContext } from "react";
 import {
   BlogLink,
-  BlogTree,
+  BlogList,
   Cmd,
   HeroContainer,
   Link,
@@ -41,6 +41,31 @@ function getBlogPosts(node: FileNode): FileNode[] {
     }
   }
   return [];
+}
+
+function formatFileSize(size: number): string {
+  const units = ["B", "K", "M", "G", "T"];
+  let index = 0;
+  while (size >= 1024 && index < units.length - 1) {
+    size /= 1024;
+    index++;
+  }
+  if (index === 0) {
+    return `${size.toString().padStart(4, ' ')}`;
+  }
+  return `${size.toFixed(1).padStart(4, ' ')}${units[index]}`;
+}
+
+function formatDateTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  const options: Intl.DateTimeFormatOptions = {
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  };
+  return date.toLocaleString('en-US', options).replace(',', '');
 }
 
 const Welcome: React.FC = () => {
@@ -85,23 +110,22 @@ const Welcome: React.FC = () => {
         <Seperator>----</Seperator>
         {blogPosts.length > 0 && (
           <>
-            <div>Recent blog posts:</div>
-            <BlogTree>
-              <div><span className="tree-line">blog/</span></div>
-              {blogPosts.map((post, index) => {
-                const isLast = index === blogPosts.length - 1;
-                const prefix = isLast ? '└── ' : '├── ';
+            <div>Recent blog posts (<Cmd>ls -l blog</Cmd>):</div>
+            <BlogList>
+              {blogPosts.map((post) => {
                 const filePath = post.path.replace(/^terminal\//, '');
+                const size = formatFileSize(post.size || 0);
+                const date = formatDateTime(post.timestamp || Date.now());
                 return (
                   <div key={post.name}>
-                    <span className="tree-line">{prefix}</span>
+                    <span className="file-info">{size}  {date}  </span>
                     <BlogLink onClick={() => handleBlogClick(filePath)}>
                       {post.name}
                     </BlogLink>
                   </div>
                 );
               })}
-            </BlogTree>
+            </BlogList>
             <Seperator>----</Seperator>
           </>
         )}

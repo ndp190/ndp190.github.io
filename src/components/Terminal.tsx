@@ -43,7 +43,7 @@ export const commands: Command = [
   { cmd: "history", desc: "view command history", tab: 6 },
   // { cmd: "projects", desc: "view projects that I've coded", tab: 5 },
   { cmd: "pwd", desc: "print current working directory", tab: 10 },
-  { cmd: "ls", desc: "list directory contents", tab: 11 },
+  { cmd: "ls", desc: "list directory contents (-l for details)", tab: 11 },
   { cmd: "tree", desc: "list contents of directories in a tree-like format", tab: 9 },
   // { cmd: "socials", desc: "check out my social accounts", tab: 6 },
   // { cmd: "whoami", desc: "about current user", tab: 7 },

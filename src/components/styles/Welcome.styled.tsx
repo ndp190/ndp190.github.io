@@ -74,11 +74,12 @@ export const BlogLink = styled.span`
   }
 `;
 
-export const BlogTree = styled.div`
+export const BlogList = styled.div`
   margin: 0.5rem 0;
   font-family: monospace;
+  white-space: pre;
 
-  .tree-line {
+  .file-info {
     color: ${({ theme }) => theme.colors?.text?.[300]};
   }
 `;

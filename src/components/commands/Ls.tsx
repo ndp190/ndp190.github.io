@@ -2,55 +2,107 @@ import { homeContext } from "@/pages";
 import { FileNode } from "@/types/files";
 import React, { useContext } from "react";
 import { Wrapper } from "../styles/Output.styled";
+import { termContext } from "../Terminal";
+import { findFileByPath } from "@/utils/fileUtils";
+import styled from "styled-components";
 
-function formatDate(timestamp: number): string {
+const ErrorMessage = styled.div`
+  color: ${({ theme }) => theme.colors.text[300]};
+`;
+
+function formatDateTime(timestamp: number): string {
   const date = new Date(timestamp);
-  // const options = { month: 'short', day: 'numeric' };
-  const options: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
-  return date.toLocaleString('en-US', options);
+  const options: Intl.DateTimeFormatOptions = {
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  };
+  return date.toLocaleString('en-US', options).replace(',', '');
 }
 
 function formatFileSize(size: number): string {
-  const units = ["B", "KB", "MB", "GB", "TB"];
+  const units = ["B", "K", "M", "G", "T"];
   let index = 0;
   while (size >= 1024 && index < units.length - 1) {
     size /= 1024;
     index++;
   }
-  return `${size.toFixed(0)}${units[index]}`;
+  if (index === 0) {
+    return `${size.toString().padStart(4, ' ')}`;
+  }
+  return `${size.toFixed(1).padStart(4, ' ')}${units[index]}`;
 }
 
-function renderNode(node: FileNode): string {
+function renderSimpleList(node: FileNode): string {
   const { children } = node;
+  if (!children) return '';
+
+  return children
+    .map(child => child.isDirectory ? `${child.name}/` : child.name)
+    .join('  ');
+}
+
+function renderDetailedList(node: FileNode): string {
+  const { children } = node;
+  if (!children) return '';
+
   let output = '';
-
-  if (!children) {
-    return output;
+  for (const child of children) {
+    const { name, size, isDirectory, timestamp } = child;
+    const formattedName = isDirectory ? `${name}/` : name;
+    const formattedSize = formatFileSize(size || 0);
+    const formattedDate = formatDateTime(timestamp || Date.now());
+    output += `${formattedSize}  ${formattedDate}  ${formattedName}\n`;
   }
-
-  if (children) {
-    for (let i = 0; i < children.length; i++) {
-      const { name, size, isDirectory, timestamp } = children[i];
-      const formattedName = isDirectory ? `${name}/` : name;
-      output += `${formatFileSize(size!)}\t${formatDate(timestamp!)}\t${formattedName}\n`;
-    }
-  }
-
   return output;
 }
 
-const Ls = () => {
+interface LsProps {
+  overrideArgs?: string[];
+}
+
+const Ls: React.FC<LsProps> = ({ overrideArgs }) => {
+  const { arg } = useContext(termContext);
   const { allFileNode } = useContext(homeContext);
-  // TODO use route to set current directory
-  // TODO update to looks more like ls (one level with suggestion)
-  // TODO support tree command
+
+  const args = overrideArgs || arg;
+
+  // Parse arguments
+  let showDetailed = false;
+  let targetPath = '';
+
+  for (const a of args) {
+    if (a === '-l') {
+      showDetailed = true;
+    } else if (!a.startsWith('-')) {
+      targetPath = a;
+    }
+  }
+
+  // Find target directory
+  let targetNode = allFileNode;
+  if (targetPath) {
+    const found = findFileByPath(allFileNode, targetPath);
+    if (!found) {
+      return <ErrorMessage>ls: {targetPath}: No such file or directory</ErrorMessage>;
+    }
+    if (!found.isDirectory) {
+      return <ErrorMessage>ls: {targetPath}: Not a directory</ErrorMessage>;
+    }
+    targetNode = found;
+  }
+
+  const output = showDetailed
+    ? renderDetailedList(targetNode)
+    : renderSimpleList(targetNode);
 
   return (
     <Wrapper>
-      <pre>{renderNode(allFileNode)}</pre>
+      <pre>{output}</pre>
     </Wrapper>
   );
 };
 
 export default Ls;
-

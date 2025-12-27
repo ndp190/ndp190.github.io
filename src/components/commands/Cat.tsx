@@ -84,10 +84,18 @@ const MarkdownWrapper = styled.div`
   }
 
   img {
-    max-width: 100%;
+    max-width: 50%;
     height: auto;
     margin: 0.5rem 0;
     border-radius: 4px;
+
+    @media (max-width: 1024px) {
+      max-width: 75%;
+    }
+
+    @media (max-width: 768px) {
+      max-width: 100%;
+    }
   }
 
   strong {
@@ -108,28 +116,23 @@ const ErrorMessage = styled.div`
 `;
 
 const Cat: React.FC = () => {
-  const { arg, index, rerender } = useContext(termContext);
+  const { arg, index, history } = useContext(termContext);
   const { allFileNode } = useContext(homeContext);
   const contentRef = useRef<HTMLDivElement>(null);
   const hasScrolled = useRef(false);
 
-  // Scroll to the top of the content when newly rendered or on initial load
+  // Scroll to the top of the content only on initial page load (for direct blog URLs)
+  // We detect initial page load by checking if history has only 1 item (the initialCommand)
+  // When user types a command, history will have 2+ items (new command + previous commands)
   useEffect(() => {
-    if (index === 0 && contentRef.current && !hasScrolled.current) {
-      // Small delay to ensure content is rendered
+    const isInitialPageLoad = history.length === 1 && index === 0;
+    if (isInitialPageLoad && contentRef.current && !hasScrolled.current) {
+      hasScrolled.current = true;
       setTimeout(() => {
         contentRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' });
-        hasScrolled.current = true;
       }, 50);
     }
-  }, [index]);
-
-  // Reset scroll flag when rerender changes (new command executed)
-  useEffect(() => {
-    if (rerender) {
-      hasScrolled.current = false;
-    }
-  }, [rerender]);
+  }, [history.length, index]);
 
   // Check if file path is provided
   if (arg.length === 0) {

@@ -22,11 +22,4 @@ I love the command line interface. It's fast, efficient, and feels like home for
 3. Multiple color themes
 4. File system navigation
 
-## Code Example
-
-```javascript
-const greeting = "Hello, World!";
-console.log(greeting);
-```
-
 Thanks for visiting!
