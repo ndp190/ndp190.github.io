@@ -57,14 +57,12 @@ function formatFileSize(size: number): string {
 
 function formatDateTime(timestamp: number): string {
   const date = new Date(timestamp);
-  const options: Intl.DateTimeFormatOptions = {
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  };
-  return date.toLocaleString('en-US', options).replace(',', '');
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = months[date.getMonth()];
+  const day = date.getDate().toString().padStart(2, '0');
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${month} ${day} ${hours}:${minutes}`;
 }
 
 const Welcome: React.FC = () => {

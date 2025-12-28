@@ -1,20 +1,24 @@
 import Terminal from "@/components/Terminal";
 import { FileNode } from "@/types/files";
-import { readDirectory } from "@/utils/listFiles";
+import { Bookmark } from "@/types/bookmark";
+import { readDirectory, readBookmarks } from "@/utils/listFiles";
 import { NextPage } from "next";
 import { createContext } from "react";
 import Head from "next/head";
 
 interface HomeProps {
   allFileNode: FileNode;
+  bookmarks: Bookmark[];
 }
 
 export const getStaticProps = async () => {
   const allFileNode = readDirectory('public/terminal');
+  const bookmarks = readBookmarks('public/bookmark');
 
   return {
     props: {
       allFileNode,
+      bookmarks,
     },
   };
 };
@@ -25,9 +29,10 @@ export const homeContext = createContext<HomeProps>({
     path: '',
     isDirectory: false,
   },
+  bookmarks: [],
 });
 
-const Home: NextPage<HomeProps> = ({ allFileNode }) => {
+const Home: NextPage<HomeProps> = ({ allFileNode, bookmarks }) => {
   const baseUrl = 'https://nikkdev.com';
 
   return (
@@ -50,7 +55,7 @@ const Home: NextPage<HomeProps> = ({ allFileNode }) => {
         <meta name="twitter:description" content="Interactive terminal-style portfolio. Type 'help' to get started." />
         <meta name="twitter:image" content={`${baseUrl}/og-default.png`} />
       </Head>
-      <homeContext.Provider value={{ allFileNode }}>
+      <homeContext.Provider value={{ allFileNode, bookmarks }}>
         <Terminal />
       </homeContext.Provider>
     </>

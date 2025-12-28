@@ -1,0 +1,249 @@
+import { useContext, useEffect, useRef } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import styled from "styled-components";
+import { checkRedirect, getCurrentCmdArry } from "../../utils/funcs";
+import {
+  BookmarkContainer,
+  BookmarkDesc,
+  BookmarkIntro,
+  BookmarkTitle,
+  BookmarkUrl,
+} from "../styles/Bookmark.styled";
+import { termContext } from "../Terminal";
+import { homeContext } from "@/pages";
+import { UsageDiv } from "../styles/Output.styled";
+
+const MarkdownWrapper = styled.div`
+  margin: 0.5rem auto 1rem;
+  line-height: 1.75;
+  max-width: 80ch;
+
+  h1, h2, h3, h4, h5, h6 {
+    color: ${({ theme }) => theme.colors.primary};
+    margin: 1.5rem 0 0.75rem 0;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+
+  h1 {
+    font-size: 1.75rem;
+    border-bottom: 1px solid ${({ theme }) => theme.colors.text[300]};
+    padding-bottom: 0.5rem;
+  }
+  h2 {
+    font-size: 1.4rem;
+    border-bottom: 1px solid ${({ theme }) => theme.colors.text[300]}50;
+    padding-bottom: 0.35rem;
+  }
+  h3 { font-size: 1.15rem; }
+  h4 { font-size: 1rem; }
+
+  p {
+    margin: 0.75rem 0;
+    color: ${({ theme }) => theme.colors.text[100]};
+  }
+
+  a {
+    color: ${({ theme }) => theme.colors.secondary};
+    text-decoration: none;
+    border-bottom: 1px dashed ${({ theme }) => theme.colors.secondary}80;
+    transition: border-bottom-color 0.2s ease;
+
+    &:hover {
+      border-bottom-color: ${({ theme }) => theme.colors.secondary};
+    }
+  }
+
+  code {
+    background: ${({ theme }) => theme.colors.text[300]}30;
+    color: ${({ theme }) => theme.colors.primary};
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    font-family: inherit;
+    font-size: 0.9em;
+  }
+
+  pre {
+    background: ${({ theme }) => theme.colors.text[300]}20;
+    border-left: 3px solid ${({ theme }) => theme.colors.secondary};
+    padding: 1rem;
+    border-radius: 0 4px 4px 0;
+    overflow-x: auto;
+    margin: 1rem 0;
+    line-height: 1.5;
+
+    code {
+      background: transparent;
+      color: ${({ theme }) => theme.colors.text[100]};
+      padding: 0;
+    }
+  }
+
+  ul, ol {
+    margin: 0.75rem 0;
+    padding-left: 1.75rem;
+  }
+
+  li {
+    margin: 0.4rem 0;
+
+    &::marker {
+      color: ${({ theme }) => theme.colors.secondary};
+    }
+  }
+
+  blockquote {
+    border-left: 4px solid ${({ theme }) => theme.colors.primary};
+    margin: 1rem 0;
+    padding: 0.5rem 0 0.5rem 1.25rem;
+    color: ${({ theme }) => theme.colors.text[200]};
+    background: ${({ theme }) => theme.colors.text[300]}15;
+    border-radius: 0 4px 4px 0;
+    font-style: italic;
+  }
+
+  table {
+    border-collapse: collapse;
+    margin: 1rem 0;
+    width: 100%;
+    overflow-x: auto;
+    display: block;
+  }
+
+  th, td {
+    border: 1px solid ${({ theme }) => theme.colors.text[300]}60;
+    padding: 0.6rem 0.8rem;
+    text-align: left;
+  }
+
+  th {
+    background: ${({ theme }) => theme.colors.text[300]}25;
+    color: ${({ theme }) => theme.colors.primary};
+    font-weight: 600;
+  }
+
+  tr:nth-child(even) {
+    background: ${({ theme }) => theme.colors.text[300]}10;
+  }
+
+  img {
+    max-width: 100%;
+    height: auto;
+    margin: 1rem 0;
+    border-radius: 4px;
+    border: 1px solid ${({ theme }) => theme.colors.text[300]}40;
+  }
+
+  strong {
+    color: ${({ theme }) => theme.colors.primary};
+    font-weight: 600;
+  }
+
+  em {
+    color: ${({ theme }) => theme.colors.text[200]};
+  }
+
+  hr {
+    border: none;
+    border-top: 1px solid ${({ theme }) => theme.colors.text[300]}50;
+    margin: 1.5rem 0;
+  }
+`;
+
+const Bookmark: React.FC = () => {
+  const { arg, history, rerender, index } = useContext(termContext);
+  const { bookmarks } = useContext(homeContext);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const hasScrolled = useRef(false);
+
+  const currentCommand = getCurrentCmdArry(history);
+  const validIds = bookmarks.map((b) => String(b.id));
+
+  // Handle 'go' action - open URL in new tab
+  useEffect(() => {
+    if (checkRedirect(rerender, currentCommand, "bookmark")) {
+      if (arg[0] === "go") {
+        const bookmark = bookmarks.find((b) => b.id === parseInt(arg[1]));
+        if (bookmark?.url) {
+          window.open(bookmark.url, "_blank");
+        }
+      }
+    }
+  }, [arg, rerender, currentCommand, bookmarks]);
+
+  // Scroll to content when viewing markdown
+  useEffect(() => {
+    if (index === 0 && contentRef.current && !hasScrolled.current && arg[0] === "cat") {
+      hasScrolled.current = true;
+      setTimeout(() => {
+        contentRef.current?.scrollIntoView({ behavior: "auto", block: "start" });
+      }, 50);
+    }
+  }, [index, arg]);
+
+  // No bookmarks available
+  if (bookmarks.length === 0) {
+    return <div>No bookmarks available.</div>;
+  }
+
+  // Handle 'cat' action - display full markdown content
+  if (arg[0] === "cat" && arg[1]) {
+    const bookmarkId = parseInt(arg[1]);
+    const bookmark = bookmarks.find((b) => b.id === bookmarkId);
+
+    if (!bookmark) {
+      return <UsageDiv>bookmark: {arg[1]}: No such bookmark</UsageDiv>;
+    }
+
+    return (
+      <MarkdownWrapper ref={contentRef}>
+        <ReactMarkdown remarkPlugins={[remarkGfm]}>{bookmark.markdown}</ReactMarkdown>
+      </MarkdownWrapper>
+    );
+  }
+
+  // Validate arguments
+  if (arg.length > 0) {
+    const action = arg[0];
+    const id = arg[1];
+
+    if ((action !== "go" && action !== "cat") || !id || !validIds.includes(id)) {
+      return (
+        <UsageDiv data-testid="bookmark-invalid-arg">
+          Usage: bookmark go &lt;id&gt; - open bookmark URL
+          <br />
+          Usage: bookmark cat &lt;id&gt; - view bookmark content
+          <br />
+          eg: bookmark go 1
+        </UsageDiv>
+      );
+    }
+    return null;
+  }
+
+  // Default: list all bookmarks
+  return (
+    <div data-testid="bookmark">
+      <BookmarkIntro>
+        Saved articles from the web. Use &apos;go&apos; to open or &apos;cat&apos; to read.
+      </BookmarkIntro>
+      {bookmarks.map(({ id, title, description, url }) => (
+        <BookmarkContainer key={id}>
+          <BookmarkTitle>{`${id}. ${title}`}</BookmarkTitle>
+          <BookmarkDesc>{description}</BookmarkDesc>
+          <BookmarkUrl href={url} target="_blank" rel="noopener noreferrer">
+            {url}
+          </BookmarkUrl>
+        </BookmarkContainer>
+      ))}
+      <UsageDiv marginY>
+        Usage: bookmark go &lt;id&gt; | bookmark cat &lt;id&gt;
+        <br />
+        eg: bookmark go 1
+      </UsageDiv>
+    </div>
+  );
+};
+
+export default Bookmark;

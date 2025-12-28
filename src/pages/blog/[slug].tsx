@@ -1,6 +1,7 @@
 import Terminal from "@/components/Terminal";
 import { FileNode } from "@/types/files";
-import { readDirectory } from "@/utils/listFiles";
+import { Bookmark } from "@/types/bookmark";
+import { readDirectory, readBookmarks } from "@/utils/listFiles";
 import { GetStaticPaths, GetStaticProps, NextPage } from "next";
 import { homeContext } from "..";
 import { languageContext } from "@/pages/_app";
@@ -19,6 +20,7 @@ interface BlogMeta {
 
 interface BlogProps {
   allFileNode: FileNode;
+  bookmarks: Bookmark[];
   slug: string;
   meta: BlogMeta;
 }
@@ -68,6 +70,7 @@ export const getStaticPaths: GetStaticPaths = async () => {
 
 export const getStaticProps: GetStaticProps<BlogProps> = async ({ params }) => {
   const allFileNode = readDirectory('public/terminal');
+  const bookmarks = readBookmarks('public/bookmark');
   const rawSlug = params?.slug as string;
 
   // Handle Vietnamese slugs (e.g., hello-world.vn -> hello-world.vn.md)
@@ -83,13 +86,14 @@ export const getStaticProps: GetStaticProps<BlogProps> = async ({ params }) => {
   return {
     props: {
       allFileNode,
+      bookmarks,
       slug: rawSlug,
       meta,
     },
   };
 };
 
-const BlogPage: NextPage<BlogProps> = ({ allFileNode, slug, meta }) => {
+const BlogPage: NextPage<BlogProps> = ({ allFileNode, bookmarks, slug, meta }) => {
   const router = useRouter();
   const { setLanguage } = useContext(languageContext);
 
@@ -132,7 +136,7 @@ const BlogPage: NextPage<BlogProps> = ({ allFileNode, slug, meta }) => {
         <meta name="twitter:description" content={meta.description} />
         <meta name="twitter:image" content={imageUrl} />
       </Head>
-      <homeContext.Provider value={{ allFileNode }}>
+      <homeContext.Provider value={{ allFileNode, bookmarks }}>
         <Terminal initialCommand={`cat ${filePath}`} />
       </homeContext.Provider>
     </>

@@ -51,3 +51,35 @@ export const Input = styled.input`
 export const Hints = styled.span`
   margin-right: 0.875rem;
 `;
+
+export const KeyboardButton = styled.button`
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%;
+  background: ${({ theme }) => theme.colors?.primary || '#fff'};
+  color: ${({ theme }) => theme.colors?.body?.background || '#000'};
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 1000;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+
+  &:active {
+    transform: scale(0.95);
+  }
+
+  @media (min-width: 550px) {
+    display: none;
+  }
+
+  svg {
+    width: 1.75rem;
+    height: 1.75rem;
+  }
+`;
