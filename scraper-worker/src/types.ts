@@ -1,6 +1,8 @@
 export interface Env {
   SCRAPED_CONTENT: R2Bucket;
   FIRECRAWL_API_KEY: string;
+  POLICY_AUD: string;
+  TEAM_DOMAIN: string;
 }
 
 export interface ScrapeRequest {

@@ -20,7 +20,21 @@ wrangler secret put FIRECRAWL_API_KEY
 
 Get your API key from [firecrawl.dev](https://firecrawl.dev).
 
-### 3. Deploy
+### 3. Configure Cloudflare Access
+
+```bash
+wrangler secret put TEAM_DOMAIN
+# Enter your team domain (e.g., https://myteam.cloudflareaccess.com)
+
+wrangler secret put POLICY_AUD
+# Enter your Application Audience (AUD) Tag
+```
+
+To find these values:
+- **TEAM_DOMAIN**: Your Cloudflare Access team domain (e.g., `https://myteam.cloudflareaccess.com`)
+- **POLICY_AUD**: The Application Audience (AUD) Tag from your Access application settings
+
+### 4. Deploy
 
 ```bash
 npm run deploy
@@ -28,9 +42,11 @@ npm run deploy
 
 ## Usage
 
+The worker is protected by Cloudflare Access. You must authenticate before accessing.
+
 ### Web UI
 
-Visit the worker URL in your browser to access the web interface:
+Visit the worker URL in your browser (you'll be prompted to authenticate via Cloudflare Access):
 - Enter a URL to scrape
 - Shows progress spinner while scraping
 - Displays result or error when complete

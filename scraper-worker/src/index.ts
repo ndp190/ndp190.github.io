@@ -1,3 +1,4 @@
+import { jwtVerify, createRemoteJWKSet } from 'jose';
 import type { Env, ScrapeRequest, FirecrawlResponse, StoredResult } from './types';
 
 const FIRECRAWL_API_URL = 'https://api.firecrawl.dev/v2/scrape';
@@ -159,6 +160,12 @@ export default {
       return handleCors();
     }
 
+    // Verify Cloudflare Access JWT
+    const authError = await verifyAccess(request, env);
+    if (authError) {
+      return authError;
+    }
+
     if (request.method === 'GET') {
       return new Response(HTML_PAGE, {
         headers: { 'Content-Type': 'text/html' },
@@ -240,6 +247,40 @@ function generateKey(title: string): string {
     .replace(/-+/g, '-')
     .substring(0, 100);
   return `bookmark/${sanitized}.json`;
+}
+
+async function verifyAccess(request: Request, env: Env): Promise<Response | null> {
+  if (!env.POLICY_AUD || !env.TEAM_DOMAIN) {
+    return new Response('Missing Cloudflare Access configuration', {
+      status: 403,
+      headers: { 'Content-Type': 'text/plain' },
+    });
+  }
+
+  const token = request.headers.get('cf-access-jwt-assertion');
+  if (!token) {
+    return new Response('Missing CF Access JWT', {
+      status: 403,
+      headers: { 'Content-Type': 'text/plain' },
+    });
+  }
+
+  try {
+    const JWKS = createRemoteJWKSet(
+      new URL(`${env.TEAM_DOMAIN}/cdn-cgi/access/certs`)
+    );
+    await jwtVerify(token, JWKS, {
+      issuer: env.TEAM_DOMAIN,
+      audience: env.POLICY_AUD,
+    });
+    return null; // Valid token
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error';
+    return new Response(`Invalid token: ${message}`, {
+      status: 403,
+      headers: { 'Content-Type': 'text/plain' },
+    });
+  }
 }
 
 function isValidUrl(urlString: string): boolean {
