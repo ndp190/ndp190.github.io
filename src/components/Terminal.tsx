@@ -23,6 +23,8 @@ import {
 import { argTab } from "../utils/funcs";
 import { homeContext } from "@/pages";
 import { getMatchingPaths } from "@/utils/fileUtils";
+import { fetchBookmarkManifest } from "@/utils/bookmarkService";
+import type { BookmarkManifest } from "@/types/bookmark";
 
 type Command = {
   cmd: string;
@@ -88,6 +90,7 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
+  const [bookmarkManifest, setBookmarkManifest] = useState<BookmarkManifest | null>(null);
 
   // Detect mobile device - only after mount to avoid hydration mismatch
   useEffect(() => {
@@ -103,6 +106,13 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
     }
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
+  }, []);
+
+  // Load bookmark manifest for autocomplete
+  useEffect(() => {
+    fetchBookmarkManifest()
+      .then(setBookmarkManifest)
+      .catch(() => {}); // Silently fail - autocomplete just won't work
   }, []);
 
   // Check if form is in viewport
@@ -203,6 +213,45 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
         } else if (matchingPaths.length > 1) {
           setHints(matchingPaths);
           return;
+        }
+      }
+
+      // Handle bookmark command autocomplete
+      if (inputParts[0] === "bookmark" && bookmarkManifest) {
+        const subcommand = inputParts[1] || "";
+        const partialId = inputParts[2] || "";
+
+        // Autocomplete subcommand (go/cat)
+        if (inputParts.length <= 2 && !["go", "cat"].includes(subcommand)) {
+          const subcommands = ["go", "cat"].filter(s => s.startsWith(subcommand));
+          if (subcommands.length === 1) {
+            setInputVal(`bookmark ${subcommands[0]} `);
+            setHints([]);
+            return;
+          } else if (subcommands.length > 1 && subcommand) {
+            setHints(subcommands.map(s => `bookmark ${s}`));
+            return;
+          }
+        }
+
+        // Autocomplete bookmark ID with title
+        if (["go", "cat"].includes(subcommand)) {
+          const truncate = (str: string, len: number) =>
+            str.length > len ? str.slice(0, len) + "..." : str;
+
+          const matchingBookmarks = bookmarkManifest.bookmarks
+            .filter(b => String(b.id).startsWith(partialId))
+            .map(b => `${b.id}. ${truncate(b.title, 50)}`);
+
+          if (matchingBookmarks.length === 1) {
+            const id = matchingBookmarks[0].split(".")[0];
+            setInputVal(`bookmark ${subcommand} ${id}`);
+            setHints([]);
+            return;
+          } else if (matchingBookmarks.length > 1) {
+            setHints(matchingBookmarks);
+            return;
+          }
         }
       }
 

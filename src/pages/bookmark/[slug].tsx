@@ -1,10 +1,12 @@
 import Terminal from "@/components/Terminal";
 import { FileNode } from "@/types/files";
-import { Bookmark } from "@/types/bookmark";
-import { readDirectory, readBookmarks } from "@/utils/listFiles";
+import { BookmarkManifest, BookmarkManifestItem } from "@/types/bookmark";
+import { readDirectory } from "@/utils/listFiles";
 import { GetStaticPaths, GetStaticProps, NextPage } from "next";
 import { homeContext } from "..";
 import Head from "next/head";
+import fs from "fs";
+import path from "path";
 
 interface BookmarkMeta {
   title: string;
@@ -14,15 +16,21 @@ interface BookmarkMeta {
 
 interface BookmarkPageProps {
   allFileNode: FileNode;
-  bookmarks: Bookmark[];
   bookmarkId: number;
   meta: BookmarkMeta;
 }
 
-export const getStaticPaths: GetStaticPaths = async () => {
-  const bookmarks = readBookmarks('public/bookmark');
+// Read manifest at build time
+function readManifest(): BookmarkManifest {
+  const manifestPath = path.join(process.cwd(), 'public/bookmark/manifest.json');
+  const content = fs.readFileSync(manifestPath, 'utf-8');
+  return JSON.parse(content);
+}
 
-  const paths = bookmarks.map(bookmark => ({
+export const getStaticPaths: GetStaticPaths = async () => {
+  const manifest = readManifest();
+
+  const paths = manifest.bookmarks.map((bookmark: BookmarkManifestItem) => ({
     params: { slug: String(bookmark.id) }
   }));
 
@@ -34,10 +42,10 @@ export const getStaticPaths: GetStaticPaths = async () => {
 
 export const getStaticProps: GetStaticProps<BookmarkPageProps> = async ({ params }) => {
   const allFileNode = readDirectory('public/terminal');
-  const bookmarks = readBookmarks('public/bookmark');
+  const manifest = readManifest();
   const bookmarkId = parseInt(params?.slug as string, 10);
 
-  const bookmark = bookmarks.find(b => b.id === bookmarkId);
+  const bookmark = manifest.bookmarks.find((b: BookmarkManifestItem) => b.id === bookmarkId);
 
   if (!bookmark) {
     return { notFound: true };
@@ -52,14 +60,13 @@ export const getStaticProps: GetStaticProps<BookmarkPageProps> = async ({ params
   return {
     props: {
       allFileNode,
-      bookmarks,
       bookmarkId,
       meta,
     },
   };
 };
 
-const BookmarkPage: NextPage<BookmarkPageProps> = ({ allFileNode, bookmarks, bookmarkId, meta }) => {
+const BookmarkPage: NextPage<BookmarkPageProps> = ({ allFileNode, bookmarkId, meta }) => {
   const baseUrl = 'https://nikkdev.com';
   const pageUrl = `${baseUrl}/bookmark/${bookmarkId}`;
   const imageUrl = `${baseUrl}${meta.image}`;
@@ -84,7 +91,7 @@ const BookmarkPage: NextPage<BookmarkPageProps> = ({ allFileNode, bookmarks, boo
         <meta name="twitter:description" content={meta.description} />
         <meta name="twitter:image" content={imageUrl} />
       </Head>
-      <homeContext.Provider value={{ allFileNode, bookmarks }}>
+      <homeContext.Provider value={{ allFileNode }}>
         <Terminal initialCommand={`bookmark cat ${bookmarkId}`} />
       </homeContext.Provider>
     </>

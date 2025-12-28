@@ -1,0 +1,19 @@
+{
+  "bookmarks": [
+    {
+      "id": 1,
+      "key": "prompt-caching-10x-cheaper-llm-tokens-but-how-ngrok-blog",
+      "title": "Prompt caching: 10x cheaper LLM tokens, but how? | ngrok blog",
+      "description": "A far more detailed explanation of prompt caching than anyone asked for.",
+      "url": "https://ngrok.com/blog/prompt-caching"
+    },
+    {
+      "id": 2,
+      "key": "iso-8583-the-language-of-credit-cards-increase",
+      "title": "ISO 8583: The language of credit cards — Increase",
+      "description": "Discover the inner workings of ISO 8583, the global standard for credit card transaction messaging. Learn how it powers payment processing across networks and explore its structure, fields, and real-world applications.",
+      "url": "https://increase.com/articles/iso-8583-the-language-of-credit-cards"
+    }
+  ],
+  "updatedAt": "2025-12-28T14:46:06.922Z"
+}

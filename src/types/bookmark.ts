@@ -1,3 +1,4 @@
+// Raw JSON structure from R2 scraper
 export interface BookmarkMetadata {
   title?: string;
   ogTitle?: string;
@@ -13,13 +14,35 @@ export interface BookmarkData {
   metadata: BookmarkMetadata;
 }
 
-export interface BookmarkJson {
+export interface FirecrawlResponse {
   success: boolean;
   data: BookmarkData;
 }
 
+export interface BookmarkJson {
+  url: string;
+  scrapedAt: string;
+  firecrawlResponse: FirecrawlResponse;
+}
+
+// Manifest types (for listing bookmarks)
+export interface BookmarkManifestItem {
+  id: number;
+  key: string;
+  title: string;
+  description: string;
+  url: string;
+}
+
+export interface BookmarkManifest {
+  bookmarks: BookmarkManifestItem[];
+  updatedAt: string;
+}
+
+// Full bookmark with content (for cat command)
 export interface Bookmark {
   id: number;
+  key: string;
   title: string;
   description: string;
   url: string;

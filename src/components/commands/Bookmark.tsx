@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import styled from "styled-components";
@@ -9,10 +9,15 @@ import {
   BookmarkIntro,
   BookmarkTitle,
   BookmarkUrl,
+  LoadingContainer,
+  ProgressBar,
+  ProgressFill,
+  ProgressText,
 } from "../styles/Bookmark.styled";
 import { termContext } from "../Terminal";
-import { homeContext } from "@/pages";
 import { UsageDiv } from "../styles/Output.styled";
+import { fetchBookmarkManifest, fetchBookmarkContent } from "../../utils/bookmarkService";
+import type { BookmarkManifest } from "../../types/bookmark";
 
 const MarkdownWrapper = styled.div`
   margin: 0.5rem auto 1rem;
@@ -151,56 +156,186 @@ const MarkdownWrapper = styled.div`
   }
 `;
 
+type LoadingState = 'idle' | 'loading' | 'success' | 'error';
+
+interface BookmarkState {
+  manifest: BookmarkManifest | null;
+  manifestLoading: LoadingState;
+  content: string | null;
+  contentLoading: LoadingState;
+  error: string | null;
+}
+
 const Bookmark: React.FC = () => {
   const { arg, history, rerender, index } = useContext(termContext);
-  const { bookmarks } = useContext(homeContext);
   const contentRef = useRef<HTMLDivElement>(null);
   const hasScrolled = useRef(false);
+  const [progress, setProgress] = useState(0);
+
+  const [state, setState] = useState<BookmarkState>({
+    manifest: null,
+    manifestLoading: 'idle',
+    content: null,
+    contentLoading: 'idle',
+    error: null,
+  });
 
   const currentCommand = getCurrentCmdArry(history);
-  const validIds = bookmarks.map((b) => String(b.id));
+
+  // Load manifest on mount
+  useEffect(() => {
+    if (state.manifestLoading !== 'idle') return;
+
+    setState(prev => ({ ...prev, manifestLoading: 'loading' }));
+    setProgress(10);
+
+    fetchBookmarkManifest()
+      .then(manifest => {
+        setProgress(100);
+        setState(prev => ({
+          ...prev,
+          manifest,
+          manifestLoading: 'success',
+        }));
+      })
+      .catch(() => {
+        setProgress(100);
+        setState(prev => ({
+          ...prev,
+          manifestLoading: 'error',
+          error: 'Failed to load bookmarks',
+        }));
+      });
+  }, [state.manifestLoading]);
+
+  // Simulate progress animation
+  useEffect(() => {
+    if (state.manifestLoading === 'loading' || state.contentLoading === 'loading') {
+      const interval = setInterval(() => {
+        setProgress(prev => {
+          if (prev >= 90) return prev;
+          return prev + Math.random() * 15;
+        });
+      }, 200);
+      return () => clearInterval(interval);
+    }
+  }, [state.manifestLoading, state.contentLoading]);
+
+  // Load content when 'cat' command is used
+  useEffect(() => {
+    if (arg[0] !== 'cat' || !arg[1] || !state.manifest) return;
+    if (state.contentLoading !== 'idle') return;
+
+    const bookmarkId = parseInt(arg[1]);
+    const bookmark = state.manifest.bookmarks.find(b => b.id === bookmarkId);
+
+    if (!bookmark) return;
+
+    setState(prev => ({ ...prev, contentLoading: 'loading' }));
+    setProgress(10);
+
+    fetchBookmarkContent(bookmark.key)
+      .then(markdown => {
+        setProgress(100);
+        setState(prev => ({
+          ...prev,
+          content: markdown,
+          contentLoading: 'success',
+        }));
+      })
+      .catch(() => {
+        setProgress(100);
+        setState(prev => ({
+          ...prev,
+          contentLoading: 'error',
+          error: 'Failed to load bookmark',
+        }));
+      });
+  }, [arg, state.manifest, state.contentLoading]);
 
   // Handle 'go' action - open URL in new tab
   useEffect(() => {
     if (checkRedirect(rerender, currentCommand, "bookmark")) {
-      if (arg[0] === "go") {
-        const bookmark = bookmarks.find((b) => b.id === parseInt(arg[1]));
+      if (arg[0] === "go" && state.manifest) {
+        const bookmark = state.manifest.bookmarks.find(b => b.id === parseInt(arg[1]));
         if (bookmark?.url) {
           window.open(bookmark.url, "_blank");
         }
       }
     }
-  }, [arg, rerender, currentCommand, bookmarks]);
+  }, [arg, rerender, currentCommand, state.manifest]);
 
   // Scroll to content when viewing markdown
   useEffect(() => {
-    if (index === 0 && contentRef.current && !hasScrolled.current && arg[0] === "cat") {
+    if (index === 0 && contentRef.current && !hasScrolled.current && arg[0] === "cat" && state.contentLoading === 'success') {
       hasScrolled.current = true;
       setTimeout(() => {
         contentRef.current?.scrollIntoView({ behavior: "auto", block: "start" });
       }, 50);
     }
-  }, [index, arg]);
+  }, [index, arg, state.contentLoading]);
+
+  // Loading state for manifest
+  if (state.manifestLoading === 'loading') {
+    return (
+      <LoadingContainer>
+        <ProgressText>Loading bookmarks...</ProgressText>
+        <ProgressBar>
+          <ProgressFill style={{ width: `${Math.min(progress, 100)}%` }} />
+        </ProgressBar>
+      </LoadingContainer>
+    );
+  }
+
+  // Error state
+  if (state.manifestLoading === 'error' || (state.contentLoading === 'error' && arg[0] === 'cat')) {
+    return <UsageDiv>{state.error || 'Failed to load bookmark'}</UsageDiv>;
+  }
+
+  // No manifest yet
+  if (!state.manifest) {
+    return null;
+  }
+
+  const { manifest } = state;
+  const validIds = manifest.bookmarks.map(b => String(b.id));
 
   // No bookmarks available
-  if (bookmarks.length === 0) {
+  if (manifest.bookmarks.length === 0) {
     return <div>No bookmarks available.</div>;
   }
 
   // Handle 'cat' action - display full markdown content
   if (arg[0] === "cat" && arg[1]) {
     const bookmarkId = parseInt(arg[1]);
-    const bookmark = bookmarks.find((b) => b.id === bookmarkId);
+    const bookmark = manifest.bookmarks.find(b => b.id === bookmarkId);
 
     if (!bookmark) {
       return <UsageDiv>bookmark: {arg[1]}: No such bookmark</UsageDiv>;
     }
 
-    return (
-      <MarkdownWrapper ref={contentRef}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{bookmark.markdown}</ReactMarkdown>
-      </MarkdownWrapper>
-    );
+    // Loading content
+    if (state.contentLoading === 'loading') {
+      return (
+        <LoadingContainer>
+          <ProgressText>Fetching bookmark...</ProgressText>
+          <ProgressBar>
+            <ProgressFill style={{ width: `${Math.min(progress, 100)}%` }} />
+          </ProgressBar>
+        </LoadingContainer>
+      );
+    }
+
+    // Content loaded
+    if (state.content) {
+      return (
+        <MarkdownWrapper ref={contentRef}>
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{state.content}</ReactMarkdown>
+        </MarkdownWrapper>
+      );
+    }
+
+    return null;
   }
 
   // Validate arguments
@@ -228,7 +363,7 @@ const Bookmark: React.FC = () => {
       <BookmarkIntro>
         Saved articles from the web. Use &apos;go&apos; to open or &apos;cat&apos; to read.
       </BookmarkIntro>
-      {bookmarks.map(({ id, title, description, url }) => (
+      {manifest.bookmarks.map(({ id, title, description, url }) => (
         <BookmarkContainer key={id}>
           <BookmarkTitle>{`${id}. ${title}`}</BookmarkTitle>
           <BookmarkDesc>{description}</BookmarkDesc>
