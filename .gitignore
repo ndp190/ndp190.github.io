@@ -42,3 +42,7 @@ validation-report.json
 node_modules
 .next
 out
+
+# Claude
+.claude/settings.local.json
+.claude/skills
