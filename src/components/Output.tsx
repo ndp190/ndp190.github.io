@@ -11,7 +11,6 @@ import Help from "./commands/Help";
 import Welcome from "./commands/Welcome";
 import History from "./commands/History";
 import Language from "./commands/Language";
-import Projects from "./commands/Projects";
 import Socials from "./commands/Socials";
 import Themes from "./commands/Themes";
 import { OutputContainer, UsageDiv } from "./styles/Output.styled";
@@ -28,7 +27,7 @@ type Props = {
 const Output: React.FC<Props> = ({ index, cmd }) => {
   const { arg } = useContext(termContext);
 
-  const specialCmds = ["bookmark", "projects", "socials", "themes", "language", "echo", "cat", "ls"];
+  const specialCmds = ["bookmark", "socials", "themes", "language", "echo", "cat", "ls"];
 
   // return 'Usage: <cmd>' if command arg is not valid
   // eg: about tt
@@ -50,7 +49,6 @@ const Output: React.FC<Props> = ({ index, cmd }) => {
           help: <Help />,
           history: <History />,
           language: <Language />,
-          projects: <Projects />,
           pwd: <GeneralOutput>/home/nikk</GeneralOutput>,
           socials: <Socials />,
           themes: <Themes />,

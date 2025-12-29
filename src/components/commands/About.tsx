@@ -4,8 +4,25 @@ import {
   HighlightSpan,
 } from "../styles/About.styled";
 
+const projects = [
+  {
+    title: "Nikk's Blog",
+    desc: "My techy yapping.",
+    url: "https://nikkdev.com/",
+  },
+  {
+    title: "Nguyen talk - podcast landing page",
+    desc: "A landing page for a podcast series featuring career discussions and interviews.",
+    url: "https://nguyentalk.com/",
+  },
+  {
+    title: "Cokie typo fashion ecommerce",
+    desc: "An ecommerce web application where users can browse various products and make purchases.",
+    url: "https://cokie.store/",
+  },
+];
+
 const About: React.FC = () => {
-  // TODO add social icons
   return (
     <AboutWrapper data-testid="about">
       <p>
@@ -19,6 +36,16 @@ const About: React.FC = () => {
         <li>LinkedIn <a href="https://www.linkedin.com/in/ndp190" target="_blank">https://www.linkedin.com/in/ndp190</a></li>
         <li>Twitter <a href="https://twitter.com/ndp190" target="_blank">https://twitter.com/ndp190</a></li>
         <li>Email <a href="mailto:ndp190@gmail.com">ndp190@gmail.com</a></li>
+      </ul>
+      <p>
+        Here are some of my projects you shouldn't miss:
+      </p>
+      <ul>
+        {projects.map(({ title, desc, url }) => (
+          <li key={title}>
+            <a href={url} target="_blank">{title}</a> - {desc}
+          </li>
+        ))}
       </ul>
     </AboutWrapper>
   );

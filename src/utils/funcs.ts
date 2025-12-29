@@ -37,25 +37,6 @@ export const getCurrentCmdArry = (history: string[]): string[] =>
   _.split(history[0].trim(), " ");
 
 /**
- * Check current render makes redirect
- * @param {boolean} rerender - is submitted or not
- * @param {string[]} currentCommand - current submitted command
- * @param {string} command - the command of the function
- * @returns {boolean} redirect - true | false
- */
-export const checkRedirect = (
-  rerender: boolean,
-  currentCommand: string[],
-  command: string
-): boolean =>
-  rerender && // is submitted
-  currentCommand[0] === command && // current command starts with ('socials'|'projects')
-  currentCommand[1] === "go" && // first arg is 'go'
-  currentCommand.length > 1 && // current command has arg
-  currentCommand.length < 4 && // if num of arg is valid (not `projects go 1 sth`)
-  _.includes([1, 2, 3, 4], parseInt(currentCommand[2])); // arg last part is one of id
-
-/**
  * Check current render makes redirect for theme
  * @param {boolean} rerender - is submitted or not
  * @param {string[]} currentCommand - current submitted command
@@ -120,14 +101,14 @@ export const argTab = (
     return hintsCmds;
   }
 
-  // 5) if input is 'projects' or 'socials'
-  else if (inputVal === "projects " || inputVal === "socials ") {
+  // 5) if input is 'socials '
+  else if (inputVal === "socials ") {
     setInputVal(`${inputVal}go`);
     return [];
   }
 
-  // 6) if input is 'projects g' or 'socials g'
-  else if (inputVal === "projects g" || inputVal === "socials g") {
+  // 6) if input is 'socials g'
+  else if (inputVal === "socials g") {
     setInputVal(`${inputVal}o`);
     return [];
   }
@@ -135,19 +116,6 @@ export const argTab = (
   // 7) if input is 'socials go '
   else if (_.startsWith(inputVal, "socials go ")) {
     ["1.Github", "2.Dev.to", "3.Facebook", "4.Instagram"].forEach(t => {
-      hintsCmds = [...hintsCmds, t];
-    });
-    return hintsCmds;
-  }
-
-  // 8) if input is 'projects go '
-  else if (_.startsWith(inputVal, "projects go ")) {
-    [
-      "1.Sat Naing's Blog",
-      "2.Haru Fashion",
-      "3.Haru API",
-      "4.AstroPaper Blog Theme",
-    ].forEach(t => {
       hintsCmds = [...hintsCmds, t];
     });
     return hintsCmds;

@@ -46,7 +46,6 @@ export const commands: Command = [
   // { cmd: "email", desc: "send an email to me", tab: 8 },
   // { cmd: "gui", desc: "go to my portfolio in GUI", tab: 10 },
   { cmd: "history", desc: "view command history", tab: 6 },
-  // { cmd: "projects", desc: "view projects that I've coded", tab: 5 },
   { cmd: "pwd", desc: "print current working directory", tab: 10 },
   { cmd: "ls", desc: "list directory contents (-l for details)", tab: 11 },
   { cmd: "tree", desc: "list contents of directories in a tree-like format", tab: 9 },

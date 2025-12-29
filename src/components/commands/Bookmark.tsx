@@ -2,7 +2,7 @@ import { useContext, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import styled from "styled-components";
-import { checkRedirect, getCurrentCmdArry } from "../../utils/funcs";
+import { getCurrentCmdArry } from "../../utils/funcs";
 import {
   BookmarkContainer,
   BookmarkDesc,
@@ -255,12 +255,17 @@ const Bookmark: React.FC = () => {
 
   // Handle 'go' action - open URL in new tab
   useEffect(() => {
-    if (checkRedirect(rerender, currentCommand, "bookmark")) {
-      if (arg[0] === "go" && state.manifest) {
-        const bookmark = state.manifest.bookmarks.find(b => b.id === parseInt(arg[1]));
-        if (bookmark?.url) {
-          window.open(bookmark.url, "_blank");
-        }
+    if (
+      rerender &&
+      currentCommand[0] === "bookmark" &&
+      currentCommand[1] === "go" &&
+      currentCommand.length === 3 &&
+      state.manifest
+    ) {
+      const bookmarkId = parseInt(currentCommand[2]);
+      const bookmark = state.manifest.bookmarks.find(b => b.id === bookmarkId);
+      if (bookmark?.url) {
+        window.open(bookmark.url, "_blank");
       }
     }
   }, [arg, rerender, currentCommand, state.manifest]);

@@ -2,7 +2,6 @@ import {
   generateTabs,
   isArgInvalid,
   getCurrentCmdArry,
-  checkRedirect,
   checkThemeSwitch,
 } from '../utils/funcs';
 
@@ -59,33 +58,6 @@ describe('getCurrentCmdArry', () => {
   it('handles single command', () => {
     const result = getCurrentCmdArry(['about']);
     expect(result).toEqual(['about']);
-  });
-});
-
-describe('checkRedirect', () => {
-  it('returns true for valid redirect command', () => {
-    const result = checkRedirect(true, ['projects', 'go', '1'], 'projects');
-    expect(result).toBe(true);
-  });
-
-  it('returns false when not rerendered', () => {
-    const result = checkRedirect(false, ['projects', 'go', '1'], 'projects');
-    expect(result).toBe(false);
-  });
-
-  it('returns false when command does not match', () => {
-    const result = checkRedirect(true, ['socials', 'go', '1'], 'projects');
-    expect(result).toBe(false);
-  });
-
-  it('returns false when action is not go', () => {
-    const result = checkRedirect(true, ['projects', 'set', '1'], 'projects');
-    expect(result).toBe(false);
-  });
-
-  it('returns false for invalid id', () => {
-    const result = checkRedirect(true, ['projects', 'go', '5'], 'projects');
-    expect(result).toBe(false);
   });
 });
 
