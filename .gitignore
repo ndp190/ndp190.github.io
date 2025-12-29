@@ -45,4 +45,3 @@ out
 
 # Claude
 .claude/settings.local.json
-.claude/skills
