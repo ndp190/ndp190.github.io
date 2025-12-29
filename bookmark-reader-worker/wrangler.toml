@@ -1,0 +1,30 @@
+name = "bookmark-reader-worker"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# Secrets (set via wrangler secret put):
+# - TEAM_DOMAIN
+# - POLICY_AUD
+
+[[kv_namespaces]]
+binding = "NIKK_BOOKMARK_PROGRESS"
+id = "a43ac503a122488f920861622a7f2a39"
+
+[[kv_namespaces]]
+binding = "NIKK_BOOKMARK_ANNOTATION"
+id = "5add4d02aa8c4830bb2ae2c9d417647e"
+
+# Test environment - uses in-memory KV
+[env.test]
+[env.test.vars]
+SKIP_AUTH = "true"
+
+[[env.test.kv_namespaces]]
+binding = "NIKK_BOOKMARK_PROGRESS"
+id = "test-progress-kv"
+
+[[env.test.kv_namespaces]]
+binding = "NIKK_BOOKMARK_ANNOTATION"
+id = "test-annotation-kv"
