@@ -1,6 +1,8 @@
 export interface Env {
   NIKK_BOOKMARK_PROGRESS: KVNamespace;
   NIKK_BOOKMARK_ANNOTATION: KVNamespace;
+  BOOKMARK_BUCKET: R2Bucket;
+  FIRECRAWL_API_KEY: string;
   POLICY_AUD: string;
   TEAM_DOMAIN: string;
   SKIP_AUTH?: string; // For testing only

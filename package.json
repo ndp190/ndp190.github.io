@@ -8,8 +8,7 @@
     "start": "next start",
     "lint": "next lint",
     "test": "jest",
-    "test:watch": "jest --watch",
-    "bookmark:manifest": "npx tsx scripts/update-bookmark-manifest.ts"
+    "test:watch": "jest --watch"
   },
   "dependencies": {
     "@next/font": "13.1.5",

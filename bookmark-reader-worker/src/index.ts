@@ -1,8 +1,27 @@
 import { jwtVerify, createRemoteJWKSet } from 'jose';
-import type { Env, ReadingProgress, Annotation, AnnotationList, StoredBookmark, BookmarkEntry } from './types';
+import type { Env, ReadingProgress, Annotation, AnnotationList, StoredBookmark, BookmarkEntry, BookmarkManifest } from './types';
 
-const MANIFEST_URL = 'https://ndp190.github.io/bookmark/manifest.json';
-const R2_BASE_URL = 'https://r2.nikkdev.com/bookmark';
+const MANIFEST_KEY = 'bookmark/manifest.json';
+const FIRECRAWL_API_URL = 'https://api.firecrawl.dev/v2/scrape';
+
+interface FirecrawlResponse {
+  success: boolean;
+  data?: {
+    markdown?: string;
+    html?: string;
+    rawHtml?: string;
+    links?: string[];
+    screenshot?: string;
+    metadata?: {
+      title?: string;
+      description?: string;
+      language?: string;
+      sourceURL?: string;
+      [key: string]: unknown;
+    };
+  };
+  error?: string;
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -47,11 +66,10 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
   // GET /api/bookmarks - fetch manifest and enrich with progress
   if (path === '/api/bookmarks' && request.method === 'GET') {
     try {
-      const manifestRes = await fetch(MANIFEST_URL);
-      if (!manifestRes.ok) {
-        return jsonResponse({ error: 'Failed to fetch manifest' }, 500);
+      const manifest = await getManifest(env);
+      if (!manifest) {
+        return jsonResponse({ error: 'Manifest not found' }, 404);
       }
-      const manifest = await manifestRes.json() as { bookmarks: BookmarkEntry[] };
 
       // Enrich with progress data
       const enrichedBookmarks = await Promise.all(
@@ -75,12 +93,76 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
   if (path.startsWith('/api/bookmark/') && request.method === 'GET') {
     const key = decodeURIComponent(path.replace('/api/bookmark/', ''));
     try {
-      const bookmarkRes = await fetch(`${R2_BASE_URL}/${key}.json`);
-      if (!bookmarkRes.ok) {
+      const object = await env.BOOKMARK_BUCKET.get(`bookmark/${key}.json`);
+      if (!object) {
         return jsonResponse({ error: 'Bookmark not found' }, 404);
       }
-      const bookmark = await bookmarkRes.json() as StoredBookmark;
+      const bookmark = await object.json() as StoredBookmark;
       return jsonResponse(bookmark);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return jsonResponse({ error: message }, 500);
+    }
+  }
+
+  // POST /api/scrape - scrape URL and add to bookmarks
+  if (path === '/api/scrape' && request.method === 'POST') {
+    try {
+      const body = await request.json() as { url: string };
+      if (!body.url) {
+        return jsonResponse({ error: 'Missing required field: url' }, 400);
+      }
+      if (!isValidUrl(body.url)) {
+        return jsonResponse({ error: 'Invalid URL format' }, 400);
+      }
+
+      // Scrape the URL
+      const firecrawlResult = await scrapeWithFirecrawl(body.url, env.FIRECRAWL_API_KEY);
+      if (!firecrawlResult.success) {
+        return jsonResponse({ error: firecrawlResult.error || 'Scraping failed' }, 500);
+      }
+
+      // Generate key from title
+      const title = firecrawlResult.data?.metadata?.title || new Date().toISOString();
+      const key = generateKey(title);
+
+      // Store scraped content in R2
+      const storedBookmark: StoredBookmark = {
+        url: body.url,
+        scrapedAt: new Date().toISOString(),
+        firecrawlResponse: firecrawlResult,
+      };
+      await env.BOOKMARK_BUCKET.put(`bookmark/${key}.json`, JSON.stringify(storedBookmark), {
+        httpMetadata: { contentType: 'application/json' },
+      });
+
+      // Update manifest
+      const manifest = await getManifest(env) || { bookmarks: [], updatedAt: new Date().toISOString() };
+      const nextId = manifest.bookmarks.length > 0
+        ? Math.max(...manifest.bookmarks.map(b => b.id)) + 1
+        : 1;
+
+      const newEntry: BookmarkEntry = {
+        id: nextId,
+        key,
+        title,
+        description: firecrawlResult.data?.metadata?.description,
+        url: body.url,
+      };
+
+      manifest.bookmarks.unshift(newEntry); // Add to beginning
+      manifest.updatedAt = new Date().toISOString();
+
+      await env.BOOKMARK_BUCKET.put(MANIFEST_KEY, JSON.stringify(manifest), {
+        httpMetadata: { contentType: 'application/json' },
+      });
+
+      return jsonResponse({
+        success: true,
+        key,
+        title,
+        bookmark: newEntry,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       return jsonResponse({ error: message }, 500);
@@ -248,6 +330,53 @@ function handleCors(): Response {
   });
 }
 
+async function getManifest(env: Env): Promise<BookmarkManifest | null> {
+  const object = await env.BOOKMARK_BUCKET.get(MANIFEST_KEY);
+  if (!object) {
+    return null;
+  }
+  return object.json() as Promise<BookmarkManifest>;
+}
+
+async function scrapeWithFirecrawl(url: string, apiKey: string): Promise<FirecrawlResponse> {
+  const response = await fetch(FIRECRAWL_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      url,
+      formats: ['markdown'],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Firecrawl API error (${response.status}): ${errorText}`);
+  }
+
+  return response.json();
+}
+
+function generateKey(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .substring(0, 100);
+}
+
+function isValidUrl(urlString: string): boolean {
+  try {
+    const url = new URL(urlString);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 function getListPageHtml(): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -255,6 +384,7 @@ function getListPageHtml(): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bookmark Reader</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23fabd2f'><path d='M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap&subset=vietnamese" rel="stylesheet">
@@ -360,6 +490,94 @@ function getListPageHtml(): string {
       border: 1px solid #fb4934;
       border-radius: 8px;
     }
+    .add-btn {
+      position: fixed;
+      right: 1.5rem;
+      bottom: 1.5rem;
+      width: 56px;
+      height: 56px;
+      background: #fabd2f;
+      color: #282828;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      transition: transform 0.2s, opacity 0.2s;
+      z-index: 100;
+    }
+    .add-btn:hover { transform: scale(1.1); }
+    .add-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      padding: 1rem;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #3c3836;
+      border-radius: 12px;
+      padding: 1.5rem;
+      width: 100%;
+      max-width: 500px;
+      border: 1px solid #504945;
+    }
+    .modal h2 {
+      color: #fabd2f;
+      margin-bottom: 1rem;
+      font-size: 1.25rem;
+    }
+    .modal input[type="url"] {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      font-size: 1rem;
+      border: 2px solid #504945;
+      border-radius: 6px;
+      background: #282828;
+      color: #ebdbb2;
+      font-family: inherit;
+      margin-bottom: 1rem;
+    }
+    .modal input[type="url"]:focus { outline: none; border-color: #fabd2f; }
+    .modal input[type="url"]:disabled { opacity: 0.5; }
+    .modal-buttons {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: flex-end;
+    }
+    .modal-btn {
+      padding: 0.6rem 1.25rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-family: inherit;
+      transition: opacity 0.2s;
+    }
+    .modal-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .modal-btn.primary { background: #fabd2f; color: #282828; font-weight: 600; }
+    .modal-btn.secondary { background: #504945; color: #ebdbb2; }
+    .modal-status {
+      margin-bottom: 1rem;
+      padding: 0.75rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      display: none;
+    }
+    .modal-status.loading { display: flex; align-items: center; gap: 0.5rem; background: #504945; }
+    .modal-status.success { display: block; background: #3d5a3d; color: #b8bb26; }
+    .modal-status.error { display: block; background: #5a3d3d; color: #fb4934; }
   </style>
 </head>
 <body>
@@ -372,6 +590,24 @@ function getListPageHtml(): string {
       </div>
     </div>
   </div>
+
+  <button class="add-btn" id="addBtn" title="Add bookmark">+</button>
+
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <h2>Add Bookmark</h2>
+      <div class="modal-status" id="modalStatus">
+        <div class="spinner" style="width:18px;height:18px;border-width:2px;"></div>
+        <span id="statusText">Scraping...</span>
+      </div>
+      <input type="url" id="urlInput" placeholder="https://example.com/article" required>
+      <div class="modal-buttons">
+        <button class="modal-btn secondary" id="cancelBtn">Cancel</button>
+        <button class="modal-btn primary" id="scrapeBtn">Scrape</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     async function loadBookmarks() {
       const content = document.getElementById('content');
@@ -423,6 +659,83 @@ function getListPageHtml(): string {
       return div.innerHTML;
     }
 
+    // Modal functionality
+    const addBtn = document.getElementById('addBtn');
+    const modalOverlay = document.getElementById('modalOverlay');
+    const urlInput = document.getElementById('urlInput');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const scrapeBtn = document.getElementById('scrapeBtn');
+    const modalStatus = document.getElementById('modalStatus');
+    const statusText = document.getElementById('statusText');
+
+    function openModal() {
+      modalOverlay.classList.add('open');
+      urlInput.value = '';
+      resetStatus();
+      urlInput.focus();
+    }
+
+    function closeModal() {
+      modalOverlay.classList.remove('open');
+      resetStatus();
+    }
+
+    function resetStatus() {
+      modalStatus.className = 'modal-status';
+      urlInput.disabled = false;
+      scrapeBtn.disabled = false;
+      cancelBtn.disabled = false;
+    }
+
+    function setStatus(type, message) {
+      modalStatus.className = 'modal-status ' + type;
+      statusText.textContent = message;
+    }
+
+    async function scrapeUrl() {
+      const url = urlInput.value.trim();
+      if (!url) return;
+
+      urlInput.disabled = true;
+      scrapeBtn.disabled = true;
+      cancelBtn.disabled = true;
+      setStatus('loading', 'Scraping content...');
+
+      try {
+        const res = await fetch('/api/scrape', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          setStatus('success', 'Added: ' + data.title);
+          setTimeout(() => {
+            closeModal();
+            loadBookmarks();
+          }, 1500);
+        } else {
+          throw new Error(data.error || 'Scraping failed');
+        }
+      } catch (error) {
+        setStatus('error', 'Error: ' + error.message);
+        urlInput.disabled = false;
+        scrapeBtn.disabled = false;
+        cancelBtn.disabled = false;
+      }
+    }
+
+    addBtn.addEventListener('click', openModal);
+    cancelBtn.addEventListener('click', closeModal);
+    scrapeBtn.addEventListener('click', scrapeUrl);
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) closeModal();
+    });
+    urlInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') scrapeUrl();
+    });
+
     loadBookmarks();
   </script>
 </body>
@@ -436,6 +749,7 @@ function getReadingPageHtml(key: string): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Reading - Bookmark Reader</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23fabd2f'><path d='M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap&subset=vietnamese" rel="stylesheet">

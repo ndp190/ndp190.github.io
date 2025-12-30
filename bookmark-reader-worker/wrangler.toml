@@ -16,6 +16,13 @@ id = "a43ac503a122488f920861622a7f2a39"
 binding = "NIKK_BOOKMARK_ANNOTATION"
 id = "5add4d02aa8c4830bb2ae2c9d417647e"
 
+[[r2_buckets]]
+binding = "BOOKMARK_BUCKET"
+bucket_name = "nikk"
+
+# Secrets (set via wrangler secret put):
+# - FIRECRAWL_API_KEY
+
 # Test environment - uses in-memory KV
 [env.test]
 [env.test.vars]
