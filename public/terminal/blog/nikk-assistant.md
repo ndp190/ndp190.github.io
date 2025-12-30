@@ -126,15 +126,9 @@ The real win is cognitive load reduction. I no longer need to remember which sys
 A screenshot of the `/standup` command in action:
 ![Standup Command Screenshot](https://r2.nikkdev.com/blog/nikk-assistant-0.jpeg)
 
-## Lessons Learned
-
-1. **Start small** - After prompt to create CLAUDE.md, I built one command at a time, starting with `/standup`
-2. **MCP is powerful** - The Atlassian MCP integration made JIRA access trivial
-3. **Claude Code is flexible** - Custom commands let you extend Claude in ways I hadn't imagined
-
 ## What can be improved
 
 - Assist in more areas in my workflow
 - Making it AI platform agnostic
 
-If you're drowning in tools, consider building your own assistant configuration. Claude Code makes it surprisingly straightforward.
+If you're drowning in tools to manage your work, consider building your own assistant configuration, because Claude Code makes the process surprisingly straightforward. You can just vibe code a custom assistant tailored to your exact workflow. Fun fact: the whole building process for my AI assistant took only 30 minutes.

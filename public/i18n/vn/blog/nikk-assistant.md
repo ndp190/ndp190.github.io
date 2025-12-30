@@ -126,15 +126,10 @@ Những gì trước đây mất 15-20 phút mỗi ngày để thu thập ngữ 
 Screenshot của lệnh `/standup`:
 ![Standup Command Screenshot](https://r2.nikkdev.com/blog/nikk-assistant-0.jpeg)
 
-## Bài Học
-
-1. **Bắt đầu nhỏ** - Sau prompt đầu tiên để tạo CLAUDE.md, mình tạo từng command một lúc, bắt đầu với command `/standup`
-2. **MCP rất mạnh mẽ** - Tích hợp Atlassian MCP làm việc truy cập JIRA trở nên đơn giản
-3. **Claude Code rất linh hoạt** - Các lệnh tùy chỉnh cho phép mở rộng Claude theo những cách mình chưa tưởng tượng trước đây
-
 ## Điểm Cần Cải Tiến
 
 - Thêm tính năng cho trợ lý để hỗ trợ nhiều lĩnh vực công việc hơn
 - Update code để không bị phụ thuộc vào một nền tảng AI
 
-Nếu bạn đang tốn nhiều thời gian để quản lý task cá nhân hãy cân nhắc xây dựng cấu hình trợ lý của riêng mình. Claude Code làm điều này trở nên đơn giản đến ngạc nhiên.
+Nếu bạn đang đắm chìm trong quá nhiều công cụ để quản lý công việc, hãy cân nhắc tự xây dựng một trợ lý ảo của riêng mình, vì Claude Code khiến quá trình này trở nên cực kỳ đơn giản. Bạn chỉ cần "vibe code" để tạo ra một trợ lý ảo phù hợp chính xác với quy trình làm việc của mình. Fun fact: toàn bộ quá trình xây dựng trợ lý AI chỉ mất khoảng 30 phút của mình.
+
