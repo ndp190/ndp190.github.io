@@ -181,16 +181,43 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
     }
   }
 
+  // POST /api/progress/:key/toggle-read - toggle read status
+  if (path.match(/^\/api\/progress\/[^/]+\/toggle-read$/) && request.method === 'POST') {
+    const key = decodeURIComponent(path.replace('/api/progress/', '').replace('/toggle-read', ''));
+    try {
+      const existing = await env.NIKK_BOOKMARK_PROGRESS.get(key);
+      const currentProgress: ReadingProgress = existing
+        ? JSON.parse(existing)
+        : { bookmarkKey: key, scrollPosition: 0, scrollPercentage: 0, lastReadAt: new Date().toISOString(), isRead: false };
+
+      const progress: ReadingProgress = {
+        ...currentProgress,
+        isRead: !currentProgress.isRead,
+      };
+      await env.NIKK_BOOKMARK_PROGRESS.put(key, JSON.stringify(progress));
+      return jsonResponse({ success: true, progress });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return jsonResponse({ error: message }, 500);
+    }
+  }
+
   // POST /api/progress/:key - save progress for a bookmark
-  if (path.startsWith('/api/progress/') && request.method === 'POST') {
+  if (path.startsWith('/api/progress/') && !path.includes('/toggle-read') && request.method === 'POST') {
     const key = decodeURIComponent(path.replace('/api/progress/', ''));
     try {
       const body = await request.json() as { scrollPosition: number; scrollPercentage: number };
+
+      // Preserve existing isRead status
+      const existing = await env.NIKK_BOOKMARK_PROGRESS.get(key);
+      const existingProgress = existing ? JSON.parse(existing) as ReadingProgress : null;
+
       const progress: ReadingProgress = {
         bookmarkKey: key,
         scrollPosition: body.scrollPosition,
         scrollPercentage: body.scrollPercentage,
         lastReadAt: new Date().toISOString(),
+        isRead: existingProgress?.isRead ?? false,
       };
       await env.NIKK_BOOKMARK_PROGRESS.put(key, JSON.stringify(progress));
       return jsonResponse({ success: true, progress });
@@ -578,11 +605,68 @@ function getListPageHtml(): string {
     .modal-status.loading { display: flex; align-items: center; gap: 0.5rem; background: #504945; }
     .modal-status.success { display: block; background: #3d5a3d; color: #b8bb26; }
     .modal-status.error { display: block; background: #5a3d3d; color: #fb4934; }
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .tab-btn {
+      padding: 0.6rem 1.25rem;
+      border: 2px solid #504945;
+      border-radius: 6px;
+      background: transparent;
+      color: #928374;
+      font-family: inherit;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover { border-color: #fabd2f; color: #ebdbb2; }
+    .tab-btn.active {
+      background: #fabd2f;
+      border-color: #fabd2f;
+      color: #282828;
+      font-weight: 600;
+    }
+    .tab-count {
+      margin-left: 0.25rem;
+      opacity: 0.8;
+    }
+    .bookmark-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 0.5rem;
+    }
+    .toggle-read-btn {
+      background: none;
+      border: 2px solid #504945;
+      border-radius: 4px;
+      width: 24px;
+      height: 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.2s;
+      color: #928374;
+    }
+    .toggle-read-btn:hover { border-color: #b8bb26; color: #b8bb26; }
+    .toggle-read-btn.read {
+      background: #b8bb26;
+      border-color: #b8bb26;
+      color: #282828;
+    }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Bookmark Reader</h1>
+    <div class="tabs" id="tabs" style="display:none;">
+      <button class="tab-btn active" data-tab="unread" id="tabUnread">Unread<span class="tab-count" id="countUnread">(0)</span></button>
+      <button class="tab-btn" data-tab="read" id="tabRead">Read<span class="tab-count" id="countRead">(0)</span></button>
+    </div>
     <div id="content">
       <div class="loading">
         <div class="spinner"></div>
@@ -609,8 +693,12 @@ function getListPageHtml(): string {
   </div>
 
   <script>
+    let allBookmarks = [];
+    let currentTab = 'unread';
+
     async function loadBookmarks() {
       const content = document.getElementById('content');
+      const tabs = document.getElementById('tabs');
       try {
         const res = await fetch('/api/bookmarks');
         const data = await res.json();
@@ -618,39 +706,99 @@ function getListPageHtml(): string {
         if (data.error) throw new Error(data.error);
 
         if (!data.bookmarks || data.bookmarks.length === 0) {
+          tabs.style.display = 'none';
           content.innerHTML = '<div class="empty-state">No bookmarks found.</div>';
           return;
         }
 
-        const html = data.bookmarks.map(bookmark => {
-          const progress = bookmark.progress?.scrollPercentage || 0;
-          const lastRead = bookmark.progress?.lastReadAt
-            ? new Date(bookmark.progress.lastReadAt).toLocaleDateString()
-            : 'Not started';
-
-          return \`
-            <div class="bookmark-card" onclick="window.location.href='/read/\${encodeURIComponent(bookmark.key)}'">
-              <div class="bookmark-title">\${escapeHtml(bookmark.title)}</div>
-              \${bookmark.description ? \`<div class="bookmark-description">\${escapeHtml(bookmark.description)}</div>\` : ''}
-              <div class="bookmark-meta">
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                  <div class="progress-bar">
-                    <div class="progress-fill" style="width: \${progress}%"></div>
-                  </div>
-                  <span class="progress-text">\${Math.round(progress)}%</span>
-                </div>
-                <span>Last read: \${lastRead}</span>
-              </div>
-              <div class="source-url">\${escapeHtml(bookmark.url)}</div>
-            </div>
-          \`;
-        }).join('');
-
-        content.innerHTML = '<div class="bookmark-list">' + html + '</div>';
+        allBookmarks = data.bookmarks;
+        tabs.style.display = 'flex';
+        updateCounts();
+        renderBookmarks();
       } catch (error) {
         content.innerHTML = '<div class="error-state">Error: ' + escapeHtml(error.message) + '</div>';
       }
     }
+
+    function updateCounts() {
+      const unread = allBookmarks.filter(b => !b.progress?.isRead).length;
+      const read = allBookmarks.filter(b => b.progress?.isRead).length;
+      document.getElementById('countUnread').textContent = '(' + unread + ')';
+      document.getElementById('countRead').textContent = '(' + read + ')';
+    }
+
+    function renderBookmarks() {
+      const content = document.getElementById('content');
+      const showRead = currentTab === 'read';
+      const filtered = allBookmarks.filter(b => (b.progress?.isRead || false) === showRead);
+
+      if (filtered.length === 0) {
+        content.innerHTML = '<div class="empty-state">' + (showRead ? 'No read bookmarks.' : 'No unread bookmarks.') + '</div>';
+        return;
+      }
+
+      const html = filtered.map(bookmark => {
+        const progress = bookmark.progress?.scrollPercentage || 0;
+        const lastRead = bookmark.progress?.lastReadAt
+          ? new Date(bookmark.progress.lastReadAt).toLocaleDateString()
+          : 'Not started';
+        const isRead = bookmark.progress?.isRead || false;
+
+        return \`
+          <div class="bookmark-card">
+            <div class="bookmark-header">
+              <div class="bookmark-title" onclick="window.location.href='/read/\${encodeURIComponent(bookmark.key)}'" style="cursor:pointer;flex:1;">\${escapeHtml(bookmark.title)}</div>
+              <button class="toggle-read-btn \${isRead ? 'read' : ''}" onclick="event.stopPropagation(); toggleRead('\${bookmark.key}', \${isRead})" title="\${isRead ? 'Mark as unread' : 'Mark as read'}">
+                \${isRead ? '✓' : ''}
+              </button>
+            </div>
+            \${bookmark.description ? \`<div class="bookmark-description" onclick="window.location.href='/read/\${encodeURIComponent(bookmark.key)}'" style="cursor:pointer;">\${escapeHtml(bookmark.description)}</div>\` : ''}
+            <div class="bookmark-meta" onclick="window.location.href='/read/\${encodeURIComponent(bookmark.key)}'" style="cursor:pointer;">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: \${progress}%"></div>
+                </div>
+                <span class="progress-text">\${Math.round(progress)}%</span>
+              </div>
+              <span>Last read: \${lastRead}</span>
+            </div>
+            <div class="source-url" onclick="window.location.href='/read/\${encodeURIComponent(bookmark.key)}'" style="cursor:pointer;">\${escapeHtml(bookmark.url)}</div>
+          </div>
+        \`;
+      }).join('');
+
+      content.innerHTML = '<div class="bookmark-list">' + html + '</div>';
+    }
+
+    async function toggleRead(key, currentlyRead) {
+      try {
+        await fetch('/api/progress/' + encodeURIComponent(key) + '/toggle-read', { method: 'POST' });
+        // Update local state
+        const bookmark = allBookmarks.find(b => b.key === key);
+        if (bookmark) {
+          if (!bookmark.progress) {
+            bookmark.progress = { bookmarkKey: key, scrollPosition: 0, scrollPercentage: 0, lastReadAt: new Date().toISOString(), isRead: true };
+          } else {
+            bookmark.progress.isRead = !bookmark.progress.isRead;
+          }
+        }
+        updateCounts();
+        renderBookmarks();
+      } catch (error) {
+        console.error('Failed to toggle read status:', error);
+      }
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tab);
+      });
+      renderBookmarks();
+    }
+
+    document.getElementById('tabUnread').addEventListener('click', () => switchTab('unread'));
+    document.getElementById('tabRead').addEventListener('click', () => switchTab('read'));
 
     function escapeHtml(text) {
       if (!text) return '';
@@ -805,7 +953,7 @@ function getReadingPageHtml(key: string): string {
       height: 100%;
       background: linear-gradient(90deg, #fabd2f, #b8bb26);
       border-radius: 3px;
-      transition: width 0.1s;
+      /* no transition for smooth scroll tracking */
     }
     .container {
       max-width: 800px;
@@ -1198,7 +1346,7 @@ function getReadingPageHtml(key: string): string {
             lastSavedPosition = scrollTop;
           }
         }, 1000);
-      });
+      }, { passive: true });
     }
 
     function updateProgressDisplay(percentage) {

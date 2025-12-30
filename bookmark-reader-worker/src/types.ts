@@ -49,6 +49,7 @@ export interface ReadingProgress {
   scrollPosition: number;
   scrollPercentage: number;
   lastReadAt: string;
+  isRead: boolean;
 }
 
 export interface Annotation {
