@@ -876,14 +876,14 @@ function getReadingPageHtml(key: string): string {
 
         updateProgressDisplay(percentage);
 
-        // Debounce save (every 5 seconds)
+        // Debounce save (every 1 seconds)
         clearTimeout(scrollTimeout);
         scrollTimeout = setTimeout(() => {
           if (Math.abs(scrollTop - lastSavedPosition) > 100) {
             saveProgress(scrollTop, percentage);
             lastSavedPosition = scrollTop;
           }
-        }, 5000);
+        }, 1000);
       });
     }
 
@@ -988,15 +988,8 @@ function getReadingPageHtml(key: string): string {
       const note = document.getElementById('annotationInput').value.trim();
       if (!selectedText || !selectionRange) return;
 
-      // Highlight the selected text immediately
-      try {
-        const highlight = document.createElement('mark');
-        highlight.className = 'annotation-highlight';
-        highlight.setAttribute('data-annotation-text', selectedText);
-        selectionRange.surroundContents(highlight);
-      } catch (e) {
-        console.warn('Could not highlight selection:', e);
-      }
+      // Store range before async operation
+      const rangeToHighlight = selectionRange.cloneRange();
 
       try {
         const res = await fetch('/api/annotations/' + encodeURIComponent(bookmarkKey), {
@@ -1014,6 +1007,17 @@ function getReadingPageHtml(key: string): string {
         if (data.annotation) {
           annotations.push(data.annotation);
           renderAnnotations();
+
+          // Highlight the selected text with proper ID and click handler
+          try {
+            const highlight = document.createElement('mark');
+            highlight.className = 'annotation-highlight';
+            highlight.setAttribute('data-annotation-id', data.annotation.id);
+            highlight.onclick = () => scrollToAnnotationInPanel(data.annotation.id);
+            rangeToHighlight.surroundContents(highlight);
+          } catch (e) {
+            console.warn('Could not highlight selection:', e);
+          }
         }
         hideSelectionPopup();
       } catch (e) {
