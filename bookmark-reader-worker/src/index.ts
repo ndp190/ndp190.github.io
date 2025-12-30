@@ -441,6 +441,10 @@ function getReadingPageHtml(key: string): string {
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap&subset=vietnamese" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      overflow-x: hidden;
+      max-width: 100vw;
+    }
     body {
       font-family: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
       background: #282828;
@@ -631,6 +635,11 @@ function getReadingPageHtml(key: string): string {
       padding: 0.75rem;
       margin-bottom: 0.75rem;
       border: 1px solid #504945;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .annotation-item:hover {
+      border-color: #fabd2f;
     }
     .annotation-text {
       font-style: italic;
@@ -1035,15 +1044,39 @@ function getReadingPageHtml(key: string): string {
       }
 
       list.innerHTML = annotations.map(a => \`
-        <div class="annotation-item" data-annotation-id="\${a.id}">
+        <div class="annotation-item" data-annotation-id="\${a.id}" onclick="scrollToHighlightedText('\${a.id}')">
           <div class="annotation-text">"\${escapeHtml(a.selectedText)}"</div>
           \${a.note ? \`<div class="annotation-note">\${escapeHtml(a.note)}</div>\` : ''}
           <div class="annotation-meta">
             <span>\${new Date(a.createdAt).toLocaleDateString()}</span>
-            <button class="annotation-delete" onclick="deleteAnnotation('\${a.id}')">Delete</button>
+            <button class="annotation-delete" onclick="event.stopPropagation(); deleteAnnotation('\${a.id}')">Delete</button>
           </div>
         </div>
       \`).join('');
+    }
+
+    function scrollToHighlightedText(annotationId) {
+      const content = document.getElementById('markdownContent');
+      if (!content) return;
+
+      const highlight = content.querySelector(\`[data-annotation-id="\${annotationId}"]\`);
+      if (highlight) {
+        // Close panel on mobile for better view
+        if (window.innerWidth <= 768) {
+          document.getElementById('annotationPanel').classList.remove('open');
+        }
+
+        // Scroll to highlighted text
+        highlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        // Flash effect to draw attention
+        highlight.style.outline = '2px solid #fabd2f';
+        highlight.style.outlineOffset = '2px';
+        setTimeout(() => {
+          highlight.style.outline = '';
+          highlight.style.outlineOffset = '';
+        }, 2000);
+      }
     }
 
     function highlightAnnotationsInContent() {
