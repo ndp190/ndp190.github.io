@@ -896,31 +896,76 @@ function getReadingPageHtml(key: string): string {
     }
 
     function setupTextSelection() {
-      document.getElementById('markdownContent')?.addEventListener('mouseup', (e) => {
-        const selection = window.getSelection();
-        const text = selection.toString().trim();
+      const content = document.getElementById('markdownContent');
+      if (!content) return;
 
-        if (text.length > 0) {
-          selectedText = text;
+      // Desktop: mouseup
+      content.addEventListener('mouseup', handleTextSelection);
+
+      // Mobile: touchend with delay to let selection complete
+      content.addEventListener('touchend', (e) => {
+        setTimeout(() => handleTextSelection(e), 100);
+      });
+
+      // Hide popup when clicking/touching outside
+      document.addEventListener('mousedown', handleOutsideClick);
+      document.addEventListener('touchstart', handleOutsideClick);
+    }
+
+    function handleTextSelection(e) {
+      const selection = window.getSelection();
+      const text = selection.toString().trim();
+
+      if (text.length > 0) {
+        selectedText = text;
+        try {
           selectionRange = selection.getRangeAt(0).cloneRange();
-          showSelectionPopup(e.clientX, e.clientY);
+        } catch (err) {
+          return;
         }
-      });
 
-      document.addEventListener('mousedown', (e) => {
-        const popup = document.getElementById('selectionPopup');
-        if (!popup.contains(e.target) && popup.classList.contains('visible')) {
-          hideSelectionPopup();
+        // Get position for popup
+        let x, y;
+        if (e.type === 'touchend' && e.changedTouches?.length > 0) {
+          x = e.changedTouches[0].clientX;
+          y = e.changedTouches[0].clientY;
+        } else if (e.clientX !== undefined) {
+          x = e.clientX;
+          y = e.clientY;
+        } else {
+          // Fallback: use selection rect
+          const rect = selectionRange.getBoundingClientRect();
+          x = rect.left + rect.width / 2;
+          y = rect.bottom;
         }
-      });
+
+        showSelectionPopup(x, y);
+      }
+    }
+
+    function handleOutsideClick(e) {
+      const popup = document.getElementById('selectionPopup');
+      if (!popup.contains(e.target) && popup.classList.contains('visible')) {
+        hideSelectionPopup();
+      }
     }
 
     function showSelectionPopup(x, y) {
       const popup = document.getElementById('selectionPopup');
-      popup.style.left = Math.min(x, window.innerWidth - 300) + 'px';
-      popup.style.top = (y + window.scrollY + 10) + 'px';
+      const popupWidth = 280;
+
+      // Position popup, ensuring it stays within viewport
+      let left = Math.max(10, Math.min(x - popupWidth / 2, window.innerWidth - popupWidth - 10));
+      let top = y + window.scrollY + 10;
+
+      popup.style.left = left + 'px';
+      popup.style.top = top + 'px';
       popup.classList.add('visible');
-      document.getElementById('annotationInput').focus();
+
+      // Don't auto-focus on mobile to prevent keyboard from immediately appearing
+      if (window.innerWidth > 768) {
+        document.getElementById('annotationInput').focus();
+      }
     }
 
     function hideSelectionPopup() {
