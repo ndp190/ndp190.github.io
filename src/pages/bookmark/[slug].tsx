@@ -1,7 +1,7 @@
 import Terminal from "@/components/Terminal";
 import { FileNode } from "@/types/files";
 import { BookmarkManifest, BookmarkManifestItem } from "@/types/bookmark";
-import { readDirectory } from "@/utils/listFiles";
+import { readDirectory, readTranslations, AllTranslations } from "@/utils/listFiles";
 import { GetStaticPaths, GetStaticProps, NextPage } from "next";
 import { homeContext } from "..";
 import Head from "next/head";
@@ -16,6 +16,7 @@ interface BookmarkMeta {
 
 interface BookmarkPageProps {
   allFileNode: FileNode;
+  translations: AllTranslations;
   bookmarkId: number;
   meta: BookmarkMeta;
 }
@@ -42,6 +43,7 @@ export const getStaticPaths: GetStaticPaths = async () => {
 
 export const getStaticProps: GetStaticProps<BookmarkPageProps> = async ({ params }) => {
   const allFileNode = readDirectory('public/terminal');
+  const translations = readTranslations();
   const manifest = readManifest();
   const bookmarkId = parseInt(params?.slug as string, 10);
 
@@ -60,13 +62,14 @@ export const getStaticProps: GetStaticProps<BookmarkPageProps> = async ({ params
   return {
     props: {
       allFileNode,
+      translations,
       bookmarkId,
       meta,
     },
   };
 };
 
-const BookmarkPage: NextPage<BookmarkPageProps> = ({ allFileNode, bookmarkId, meta }) => {
+const BookmarkPage: NextPage<BookmarkPageProps> = ({ allFileNode, translations, bookmarkId, meta }) => {
   const baseUrl = 'https://nikkdev.com';
   const pageUrl = `${baseUrl}/bookmark/${bookmarkId}`;
   const imageUrl = `${baseUrl}${meta.image}`;
@@ -91,7 +94,7 @@ const BookmarkPage: NextPage<BookmarkPageProps> = ({ allFileNode, bookmarkId, me
         <meta name="twitter:description" content={meta.description} />
         <meta name="twitter:image" content={imageUrl} />
       </Head>
-      <homeContext.Provider value={{ allFileNode }}>
+      <homeContext.Provider value={{ allFileNode, translations }}>
         <Terminal initialCommand={`bookmark cat ${bookmarkId}`} />
       </homeContext.Provider>
     </>

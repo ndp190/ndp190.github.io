@@ -4,7 +4,7 @@ import '@/styles/globals.css'
 import { useTheme } from '@/utils/useTheme';
 import { useLanguage, Language } from '@/utils/useLanguage';
 import type { AppProps } from 'next/app'
-import { createContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useEffect, useState } from 'react';
 import { ThemeProvider } from 'styled-components';
 
 export const themeContext = createContext<
@@ -68,10 +68,10 @@ export default function App({ Component, pageProps }: AppProps) {
     setMode(switchTheme);
   };
 
-  const languageSwitcher = (lang: Language) => {
+  const languageSwitcher = useCallback((lang: Language) => {
     setSelectedLanguage(lang);
     setLang(lang);
-  };
+  }, [setLang]);
 
   // Use default theme for SSR/SSG, then hydrate with stored theme
   const currentTheme = themeLoaded ? selectedTheme : theme;

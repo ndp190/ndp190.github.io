@@ -8,6 +8,7 @@ import { homeContext } from '../pages';
 import { languageContext } from '../pages/_app';
 import { FileNode } from '../types/files';
 import { Language } from '../utils/useLanguage';
+import { AllTranslations } from '../utils/listFiles';
 
 const defaultTheme = theme.dark;
 
@@ -35,14 +36,6 @@ const mockFileTree: FileNode = {
           timestamp: Date.now(),
         },
         {
-          name: 'hello-world.vn.md',
-          path: 'terminal/blog/hello-world.vn.md',
-          isDirectory: false,
-          content: '# Xin Chào\n\nĐây là bài viết tiếng Việt.',
-          size: 100,
-          timestamp: Date.now(),
-        },
-        {
           name: 'english-only.md',
           path: 'terminal/blog/english-only.md',
           isDirectory: false,
@@ -55,6 +48,13 @@ const mockFileTree: FileNode = {
   ],
 };
 
+// Mock translations
+const mockTranslations: AllTranslations = {
+  vn: {
+    'terminal/blog/hello-world.md': '# Xin Chào\n\nĐây là bài viết tiếng Việt.',
+  },
+};
+
 interface RenderCatOptions {
   arg?: string[];
   history?: string[];
@@ -62,6 +62,7 @@ interface RenderCatOptions {
   rerender?: boolean;
   language?: Language;
   fileTree?: FileNode;
+  translations?: AllTranslations;
 }
 
 const renderCat = (options: RenderCatOptions = {}) => {
@@ -72,6 +73,7 @@ const renderCat = (options: RenderCatOptions = {}) => {
     rerender = false,
     language = 'en',
     fileTree = mockFileTree,
+    translations = mockTranslations,
   } = options;
 
   const termContextValue = {
@@ -91,7 +93,7 @@ const renderCat = (options: RenderCatOptions = {}) => {
   return render(
     <ThemeProvider theme={defaultTheme}>
       <languageContext.Provider value={languageContextValue}>
-        <homeContext.Provider value={{ allFileNode: fileTree }}>
+        <homeContext.Provider value={{ allFileNode: fileTree, translations }}>
           <termContext.Provider value={termContextValue}>
             <Cat />
           </termContext.Provider>
@@ -260,7 +262,7 @@ describe('Cat component', () => {
       expect(screen.queryByText(/Xin Chào/)).not.toBeInTheDocument();
     });
 
-    it('shows Vietnamese content when language is vn and .vn.md exists', () => {
+    it('shows Vietnamese content when language is vn and translation exists', () => {
       renderCat({
         arg: ['blog/hello-world.md'],
         language: 'vn',
@@ -269,7 +271,7 @@ describe('Cat component', () => {
       expect(screen.queryByText(/Hello World/)).not.toBeInTheDocument();
     });
 
-    it('falls back to English when language is vn but no .vn.md exists', () => {
+    it('falls back to English when language is vn but no translation exists', () => {
       renderCat({
         arg: ['blog/english-only.md'],
         language: 'vn',

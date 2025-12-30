@@ -13,14 +13,16 @@ const languageLabels: Record<LanguageType, string> = {
 };
 
 const Language: React.FC = () => {
-  const { arg, history, rerender } = useContext(termContext);
+  const { arg, rerender, index } = useContext(termContext);
   const { language, setLanguage } = useContext(languageContext);
 
+  // Only set language for the most recent command (index 0) to avoid race conditions
+  // where older commands in history also have rerender=true and would override the new setting
   useEffect(() => {
-    if (rerender && arg[0] === "set" && languages.includes(arg[1] as LanguageType)) {
+    if (index === 0 && rerender && arg[0] === "set" && languages.includes(arg[1] as LanguageType)) {
       setLanguage(arg[1] as LanguageType);
     }
-  }, [arg, rerender, setLanguage]);
+  }, [index, arg, rerender, setLanguage]);
 
   const isValidArg = arg[0] === "set" && languages.includes(arg[1] as LanguageType) && arg.length === 2;
 

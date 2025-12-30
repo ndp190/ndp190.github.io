@@ -153,7 +153,7 @@ const ErrorMessage = styled.div`
 
 const Cat: React.FC = () => {
   const { arg, index } = useContext(termContext);
-  const { allFileNode } = useContext(homeContext);
+  const { allFileNode, translations } = useContext(homeContext);
   const { language } = useContext(languageContext);
   const contentRef = useRef<HTMLDivElement>(null);
   const hasScrolled = useRef(false);
@@ -177,16 +177,8 @@ const Cat: React.FC = () => {
 
   const filePath = arg[0];
 
-  // Try to find language-specific version for markdown files
-  let file = null;
-  if (language === "vn" && filePath.endsWith(".md")) {
-    const vnPath = filePath.replace(/\.md$/, ".vn.md");
-    file = findFileByPath(allFileNode, vnPath);
-  }
-  // Fall back to original file if no language-specific version found
-  if (!file) {
-    file = findFileByPath(allFileNode, filePath);
-  }
+  // Find the file in the file tree
+  const file = findFileByPath(allFileNode, filePath);
 
   if (!file) {
     return <ErrorMessage>cat: {filePath}: No such file or directory</ErrorMessage>;
@@ -196,14 +188,23 @@ const Cat: React.FC = () => {
     return <ErrorMessage>cat: {filePath}: Is a directory</ErrorMessage>;
   }
 
-  if (!file.content) {
+  // Get content - check for translation first if not English
+  let content = file.content;
+  if (language !== "en" && filePath.endsWith(".md")) {
+    const translatedContent = translations[language]?.[file.path];
+    if (translatedContent) {
+      content = translatedContent;
+    }
+  }
+
+  if (!content) {
     return <ErrorMessage>cat: {filePath}: Unable to read file</ErrorMessage>;
   }
 
   return (
     <MarkdownWrapper ref={contentRef}>
       <ReactMarkdown remarkPlugins={[remarkGfm]}>
-        {file.content}
+        {content}
       </ReactMarkdown>
     </MarkdownWrapper>
   );
