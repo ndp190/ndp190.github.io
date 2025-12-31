@@ -46,7 +46,7 @@ export const getStaticPaths: GetStaticPaths = async () => {
 export const getStaticProps: GetStaticProps<BookmarkPageProps> = async ({ params }) => {
   const allFileNode = readDirectory('public/terminal');
   const translations = readTranslations();
-  const manifest = readManifest();
+  const manifest = await fetchManifest();
   const bookmarkId = parseInt(params?.slug as string, 10);
 
   const bookmark = manifest.bookmarks.find((b: BookmarkManifestItem) => b.id === bookmarkId);
@@ -57,7 +57,7 @@ export const getStaticProps: GetStaticProps<BookmarkPageProps> = async ({ params
 
   const meta: BookmarkMeta = {
     title: bookmark.title,
-    description: bookmark.description.slice(0, 160),
+    description: (bookmark.description || '').slice(0, 160),
     image: '/og-default.png',
   };
 
