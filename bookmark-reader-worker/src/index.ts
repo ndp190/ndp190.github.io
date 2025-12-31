@@ -188,7 +188,7 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
       const existing = await env.NIKK_BOOKMARK_PROGRESS.get(key);
       const currentProgress: ReadingProgress = existing
         ? JSON.parse(existing)
-        : { bookmarkKey: key, scrollPosition: 0, scrollPercentage: 0, lastReadAt: new Date().toISOString(), isRead: false };
+        : { bookmarkKey: key, scrollPosition: 0, scrollPercentage: 0, lastReadAt: new Date().toISOString(), isRead: false, isFavourite: false };
 
       const progress: ReadingProgress = {
         ...currentProgress,
@@ -202,13 +202,34 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
     }
   }
 
+  // POST /api/progress/:key/toggle-favourite - toggle favourite status
+  if (path.match(/^\/api\/progress\/[^/]+\/toggle-favourite$/) && request.method === 'POST') {
+    const key = decodeURIComponent(path.replace('/api/progress/', '').replace('/toggle-favourite', ''));
+    try {
+      const existing = await env.NIKK_BOOKMARK_PROGRESS.get(key);
+      const currentProgress: ReadingProgress = existing
+        ? JSON.parse(existing)
+        : { bookmarkKey: key, scrollPosition: 0, scrollPercentage: 0, lastReadAt: new Date().toISOString(), isRead: false, isFavourite: false };
+
+      const progress: ReadingProgress = {
+        ...currentProgress,
+        isFavourite: !currentProgress.isFavourite,
+      };
+      await env.NIKK_BOOKMARK_PROGRESS.put(key, JSON.stringify(progress));
+      return jsonResponse({ success: true, progress });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return jsonResponse({ error: message }, 500);
+    }
+  }
+
   // POST /api/progress/:key - save progress for a bookmark
-  if (path.startsWith('/api/progress/') && !path.includes('/toggle-read') && request.method === 'POST') {
+  if (path.startsWith('/api/progress/') && !path.includes('/toggle-') && request.method === 'POST') {
     const key = decodeURIComponent(path.replace('/api/progress/', ''));
     try {
       const body = await request.json() as { scrollPosition: number; scrollPercentage: number };
 
-      // Preserve existing isRead status
+      // Preserve existing isRead and isFavourite status
       const existing = await env.NIKK_BOOKMARK_PROGRESS.get(key);
       const existingProgress = existing ? JSON.parse(existing) as ReadingProgress : null;
 
@@ -218,6 +239,7 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
         scrollPercentage: body.scrollPercentage,
         lastReadAt: new Date().toISOString(),
         isRead: existingProgress?.isRead ?? false,
+        isFavourite: existingProgress?.isFavourite ?? false,
       };
       await env.NIKK_BOOKMARK_PROGRESS.put(key, JSON.stringify(progress));
       return jsonResponse({ success: true, progress });
@@ -658,6 +680,22 @@ function getListPageHtml(): string {
       border-color: #b8bb26;
       color: #282828;
     }
+    .toggle-fav-btn {
+      background: none;
+      border: none;
+      width: 24px;
+      height: 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 1.1rem;
+      color: #504945;
+      transition: all 0.2s;
+    }
+    .toggle-fav-btn:hover { color: #fabd2f; }
+    .toggle-fav-btn.favourite { color: #fabd2f; }
   </style>
 </head>
 <body>
@@ -666,6 +704,7 @@ function getListPageHtml(): string {
     <div class="tabs" id="tabs" style="display:none;">
       <button class="tab-btn active" data-tab="unread" id="tabUnread">Unread<span class="tab-count" id="countUnread">(0)</span></button>
       <button class="tab-btn" data-tab="read" id="tabRead">Read<span class="tab-count" id="countRead">(0)</span></button>
+      <button class="tab-btn" data-tab="favourites" id="tabFavourites">★<span class="tab-count" id="countFavourites">(0)</span></button>
     </div>
     <div id="content">
       <div class="loading">
@@ -723,17 +762,30 @@ function getListPageHtml(): string {
     function updateCounts() {
       const unread = allBookmarks.filter(b => !b.progress?.isRead).length;
       const read = allBookmarks.filter(b => b.progress?.isRead).length;
+      const favourites = allBookmarks.filter(b => b.progress?.isFavourite).length;
       document.getElementById('countUnread').textContent = '(' + unread + ')';
       document.getElementById('countRead').textContent = '(' + read + ')';
+      document.getElementById('countFavourites').textContent = '(' + favourites + ')';
     }
 
     function renderBookmarks() {
       const content = document.getElementById('content');
-      const showRead = currentTab === 'read';
-      const filtered = allBookmarks.filter(b => (b.progress?.isRead || false) === showRead);
+      let filtered;
+      let emptyMessage;
+
+      if (currentTab === 'favourites') {
+        filtered = allBookmarks.filter(b => b.progress?.isFavourite);
+        emptyMessage = 'No favourite bookmarks.';
+      } else if (currentTab === 'read') {
+        filtered = allBookmarks.filter(b => b.progress?.isRead);
+        emptyMessage = 'No read bookmarks.';
+      } else {
+        filtered = allBookmarks.filter(b => !b.progress?.isRead);
+        emptyMessage = 'No unread bookmarks.';
+      }
 
       if (filtered.length === 0) {
-        content.innerHTML = '<div class="empty-state">' + (showRead ? 'No read bookmarks.' : 'No unread bookmarks.') + '</div>';
+        content.innerHTML = '<div class="empty-state">' + emptyMessage + '</div>';
         return;
       }
 
@@ -743,12 +795,14 @@ function getListPageHtml(): string {
           ? new Date(bookmark.progress.lastReadAt).toLocaleDateString()
           : 'Not started';
         const isRead = bookmark.progress?.isRead || false;
+        const isFavourite = bookmark.progress?.isFavourite || false;
 
         return \`
           <div class="bookmark-card">
             <div class="bookmark-header">
               <div class="bookmark-title" onclick="window.location.href='/read/\${encodeURIComponent(bookmark.key)}'" style="cursor:pointer;flex:1;">\${escapeHtml(bookmark.title)}</div>
-              <button class="toggle-read-btn \${isRead ? 'read' : ''}" onclick="event.stopPropagation(); toggleRead('\${bookmark.key}', \${isRead})" title="\${isRead ? 'Mark as unread' : 'Mark as read'}">
+              <button class="toggle-fav-btn \${isFavourite ? 'favourite' : ''}" onclick="event.stopPropagation(); toggleFavourite('\${bookmark.key}')" title="\${isFavourite ? 'Remove from favourites' : 'Add to favourites'}">★</button>
+              <button class="toggle-read-btn \${isRead ? 'read' : ''}" onclick="event.stopPropagation(); toggleRead('\${bookmark.key}')" title="\${isRead ? 'Mark as unread' : 'Mark as read'}">
                 \${isRead ? '✓' : ''}
               </button>
             </div>
@@ -770,14 +824,13 @@ function getListPageHtml(): string {
       content.innerHTML = '<div class="bookmark-list">' + html + '</div>';
     }
 
-    async function toggleRead(key, currentlyRead) {
+    async function toggleRead(key) {
       try {
         await fetch('/api/progress/' + encodeURIComponent(key) + '/toggle-read', { method: 'POST' });
-        // Update local state
         const bookmark = allBookmarks.find(b => b.key === key);
         if (bookmark) {
           if (!bookmark.progress) {
-            bookmark.progress = { bookmarkKey: key, scrollPosition: 0, scrollPercentage: 0, lastReadAt: new Date().toISOString(), isRead: true };
+            bookmark.progress = { bookmarkKey: key, scrollPosition: 0, scrollPercentage: 0, lastReadAt: new Date().toISOString(), isRead: true, isFavourite: false };
           } else {
             bookmark.progress.isRead = !bookmark.progress.isRead;
           }
@@ -786,6 +839,24 @@ function getListPageHtml(): string {
         renderBookmarks();
       } catch (error) {
         console.error('Failed to toggle read status:', error);
+      }
+    }
+
+    async function toggleFavourite(key) {
+      try {
+        await fetch('/api/progress/' + encodeURIComponent(key) + '/toggle-favourite', { method: 'POST' });
+        const bookmark = allBookmarks.find(b => b.key === key);
+        if (bookmark) {
+          if (!bookmark.progress) {
+            bookmark.progress = { bookmarkKey: key, scrollPosition: 0, scrollPercentage: 0, lastReadAt: new Date().toISOString(), isRead: false, isFavourite: true };
+          } else {
+            bookmark.progress.isFavourite = !bookmark.progress.isFavourite;
+          }
+        }
+        updateCounts();
+        renderBookmarks();
+      } catch (error) {
+        console.error('Failed to toggle favourite status:', error);
       }
     }
 
@@ -799,6 +870,7 @@ function getListPageHtml(): string {
 
     document.getElementById('tabUnread').addEventListener('click', () => switchTab('unread'));
     document.getElementById('tabRead').addEventListener('click', () => switchTab('read'));
+    document.getElementById('tabFavourites').addEventListener('click', () => switchTab('favourites'));
 
     function escapeHtml(text) {
       if (!text) return '';
@@ -948,6 +1020,36 @@ function getReadingPageHtml(key: string): string {
       align-items: center;
       gap: 0.75rem;
       font-size: 0.9rem;
+    }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .header-btn {
+      background: none;
+      border: 2px solid #504945;
+      border-radius: 6px;
+      width: 36px;
+      height: 36px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      color: #928374;
+      font-size: 1.1rem;
+    }
+    .header-btn:hover { border-color: #fabd2f; color: #ebdbb2; }
+    .header-btn.active {
+      background: #fabd2f;
+      border-color: #fabd2f;
+      color: #282828;
+    }
+    .header-btn.fav-btn.active {
+      background: transparent;
+      border-color: #fabd2f;
+      color: #fabd2f;
     }
     .progress-bar-header {
       width: 120px;
@@ -1212,6 +1314,10 @@ function getReadingPageHtml(key: string): string {
       </div>
       <span id="progressText">0%</span>
     </div>
+    <div class="header-actions">
+      <button class="header-btn fav-btn" id="favBtn" title="Add to favourites">★</button>
+      <button class="header-btn read-btn" id="readBtn" title="Mark as read">✓</button>
+    </div>
   </header>
 
   <div class="container">
@@ -1255,6 +1361,8 @@ function getReadingPageHtml(key: string): string {
     let selectionRange = null;
     let scrollTimeout = null;
     let lastSavedPosition = 0;
+    let isRead = false;
+    let isFavourite = false;
 
     async function loadContent() {
       const content = document.getElementById('content');
@@ -1285,6 +1393,11 @@ function getReadingPageHtml(key: string): string {
 
         renderAnnotations();
         highlightAnnotationsInContent();
+
+        // Load read/favourite state
+        isRead = progressData.progress?.isRead || false;
+        isFavourite = progressData.progress?.isFavourite || false;
+        updateActionButtons();
 
         // Restore scroll position
         if (progressData.progress?.scrollPosition) {
@@ -1345,14 +1458,14 @@ function getReadingPageHtml(key: string): string {
 
         updateProgressDisplay(percentage);
 
-        // Debounce save (every 1 seconds)
+        // Debounce save (300ms)
         clearTimeout(scrollTimeout);
         scrollTimeout = setTimeout(() => {
-          if (Math.abs(scrollTop - lastSavedPosition) > 100) {
+          if (Math.abs(scrollTop - lastSavedPosition) > 50) {
             saveProgress(scrollTop, percentage);
             lastSavedPosition = scrollTop;
           }
-        }, 1000);
+        }, 300);
       }, { passive: true });
     }
 
@@ -1618,6 +1731,46 @@ function getReadingPageHtml(key: string): string {
       div.textContent = text;
       return div.innerHTML;
     }
+
+    function updateActionButtons() {
+      const readBtn = document.getElementById('readBtn');
+      const favBtn = document.getElementById('favBtn');
+
+      readBtn.classList.toggle('active', isRead);
+      readBtn.title = isRead ? 'Mark as unread' : 'Mark as read';
+
+      favBtn.classList.toggle('active', isFavourite);
+      favBtn.title = isFavourite ? 'Remove from favourites' : 'Add to favourites';
+    }
+
+    async function toggleReadStatus() {
+      try {
+        const res = await fetch('/api/progress/' + encodeURIComponent(bookmarkKey) + '/toggle-read', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          isRead = data.progress.isRead;
+          updateActionButtons();
+        }
+      } catch (error) {
+        console.error('Failed to toggle read status:', error);
+      }
+    }
+
+    async function toggleFavouriteStatus() {
+      try {
+        const res = await fetch('/api/progress/' + encodeURIComponent(bookmarkKey) + '/toggle-favourite', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          isFavourite = data.progress.isFavourite;
+          updateActionButtons();
+        }
+      } catch (error) {
+        console.error('Failed to toggle favourite status:', error);
+      }
+    }
+
+    document.getElementById('readBtn').addEventListener('click', toggleReadStatus);
+    document.getElementById('favBtn').addEventListener('click', toggleFavouriteStatus);
 
     loadContent();
   </script>

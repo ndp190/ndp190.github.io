@@ -50,6 +50,7 @@ export interface ReadingProgress {
   scrollPercentage: number;
   lastReadAt: string;
   isRead: boolean;
+  isFavourite: boolean;
 }
 
 export interface Annotation {
