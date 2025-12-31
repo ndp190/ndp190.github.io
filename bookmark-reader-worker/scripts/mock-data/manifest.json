@@ -1,0 +1,26 @@
+{
+  "bookmarks": [
+    {
+      "id": 1,
+      "key": "example-article-one",
+      "title": "Example Article One: A Deep Dive into Testing",
+      "description": "This is a mock article for testing the bookmark reader locally.",
+      "url": "https://example.com/article-one"
+    },
+    {
+      "id": 2,
+      "key": "example-article-two",
+      "title": "Example Article Two: Understanding Local Development",
+      "description": "Another mock article to test the read/unread feature.",
+      "url": "https://example.com/article-two"
+    },
+    {
+      "id": 3,
+      "key": "example-article-three",
+      "title": "Example Article Three: Building Better Tools",
+      "description": "A third mock article for comprehensive testing.",
+      "url": "https://example.com/article-three"
+    }
+  ],
+  "updatedAt": "2024-12-31T00:00:00.000Z"
+}

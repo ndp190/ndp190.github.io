@@ -16,6 +16,13 @@ id = "a43ac503a122488f920861622a7f2a39"
 binding = "NIKK_BOOKMARK_ANNOTATION"
 id = "5add4d02aa8c4830bb2ae2c9d417647e"
 
+[[r2_buckets]]
+binding = "BOOKMARK_BUCKET"
+bucket_name = "nikk"
+
+# Secrets (set via wrangler secret put):
+# - FIRECRAWL_API_KEY
+
 # Test environment - uses in-memory KV
 [env.test]
 [env.test.vars]
@@ -28,3 +35,20 @@ id = "test-progress-kv"
 [[env.test.kv_namespaces]]
 binding = "NIKK_BOOKMARK_ANNOTATION"
 id = "test-annotation-kv"
+
+# Local development environment
+[env.local]
+[env.local.vars]
+SKIP_AUTH = "true"
+
+[[env.local.kv_namespaces]]
+binding = "NIKK_BOOKMARK_PROGRESS"
+id = "local-progress-kv"
+
+[[env.local.kv_namespaces]]
+binding = "NIKK_BOOKMARK_ANNOTATION"
+id = "local-annotation-kv"
+
+[[env.local.r2_buckets]]
+binding = "BOOKMARK_BUCKET"
+bucket_name = "local-nikk"

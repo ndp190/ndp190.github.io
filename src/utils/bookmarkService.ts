@@ -1,7 +1,7 @@
 import type { BookmarkManifest, BookmarkManifestItem, BookmarkJson, Bookmark } from '../types/bookmark';
 
 const R2_BASE_URL = 'https://r2.nikkdev.com/bookmark';
-const MANIFEST_URL = '/bookmark/manifest.json';
+const MANIFEST_URL = 'https://r2.nikkdev.com/bookmark/manifest.json';
 
 /**
  * Fetch the bookmark manifest (list of all bookmarks with metadata)

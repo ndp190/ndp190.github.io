@@ -1,8 +1,27 @@
 import { jwtVerify, createRemoteJWKSet } from 'jose';
-import type { Env, ReadingProgress, Annotation, AnnotationList, StoredBookmark, BookmarkEntry } from './types';
+import type { Env, ReadingProgress, Annotation, AnnotationList, StoredBookmark, BookmarkEntry, BookmarkManifest } from './types';
 
-const MANIFEST_URL = 'https://ndp190.github.io/bookmark/manifest.json';
-const R2_BASE_URL = 'https://r2.nikkdev.com/bookmark';
+const MANIFEST_KEY = 'bookmark/manifest.json';
+const FIRECRAWL_API_URL = 'https://api.firecrawl.dev/v2/scrape';
+
+interface FirecrawlResponse {
+  success: boolean;
+  data?: {
+    markdown?: string;
+    html?: string;
+    rawHtml?: string;
+    links?: string[];
+    screenshot?: string;
+    metadata?: {
+      title?: string;
+      description?: string;
+      language?: string;
+      sourceURL?: string;
+      [key: string]: unknown;
+    };
+  };
+  error?: string;
+}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -47,11 +66,10 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
   // GET /api/bookmarks - fetch manifest and enrich with progress
   if (path === '/api/bookmarks' && request.method === 'GET') {
     try {
-      const manifestRes = await fetch(MANIFEST_URL);
-      if (!manifestRes.ok) {
-        return jsonResponse({ error: 'Failed to fetch manifest' }, 500);
+      const manifest = await getManifest(env);
+      if (!manifest) {
+        return jsonResponse({ error: 'Manifest not found' }, 404);
       }
-      const manifest = await manifestRes.json() as { bookmarks: BookmarkEntry[] };
 
       // Enrich with progress data
       const enrichedBookmarks = await Promise.all(
@@ -75,12 +93,76 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
   if (path.startsWith('/api/bookmark/') && request.method === 'GET') {
     const key = decodeURIComponent(path.replace('/api/bookmark/', ''));
     try {
-      const bookmarkRes = await fetch(`${R2_BASE_URL}/${key}.json`);
-      if (!bookmarkRes.ok) {
+      const object = await env.BOOKMARK_BUCKET.get(`bookmark/${key}.json`);
+      if (!object) {
         return jsonResponse({ error: 'Bookmark not found' }, 404);
       }
-      const bookmark = await bookmarkRes.json() as StoredBookmark;
+      const bookmark = await object.json() as StoredBookmark;
       return jsonResponse(bookmark);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return jsonResponse({ error: message }, 500);
+    }
+  }
+
+  // POST /api/scrape - scrape URL and add to bookmarks
+  if (path === '/api/scrape' && request.method === 'POST') {
+    try {
+      const body = await request.json() as { url: string };
+      if (!body.url) {
+        return jsonResponse({ error: 'Missing required field: url' }, 400);
+      }
+      if (!isValidUrl(body.url)) {
+        return jsonResponse({ error: 'Invalid URL format' }, 400);
+      }
+
+      // Scrape the URL
+      const firecrawlResult = await scrapeWithFirecrawl(body.url, env.FIRECRAWL_API_KEY);
+      if (!firecrawlResult.success) {
+        return jsonResponse({ error: firecrawlResult.error || 'Scraping failed' }, 500);
+      }
+
+      // Generate key from title
+      const title = firecrawlResult.data?.metadata?.title || new Date().toISOString();
+      const key = generateKey(title);
+
+      // Store scraped content in R2
+      const storedBookmark: StoredBookmark = {
+        url: body.url,
+        scrapedAt: new Date().toISOString(),
+        firecrawlResponse: firecrawlResult,
+      };
+      await env.BOOKMARK_BUCKET.put(`bookmark/${key}.json`, JSON.stringify(storedBookmark), {
+        httpMetadata: { contentType: 'application/json' },
+      });
+
+      // Update manifest
+      const manifest = await getManifest(env) || { bookmarks: [], updatedAt: new Date().toISOString() };
+      const nextId = manifest.bookmarks.length > 0
+        ? Math.max(...manifest.bookmarks.map(b => b.id)) + 1
+        : 1;
+
+      const newEntry: BookmarkEntry = {
+        id: nextId,
+        key,
+        title,
+        description: firecrawlResult.data?.metadata?.description,
+        url: body.url,
+      };
+
+      manifest.bookmarks.unshift(newEntry); // Add to beginning
+      manifest.updatedAt = new Date().toISOString();
+
+      await env.BOOKMARK_BUCKET.put(MANIFEST_KEY, JSON.stringify(manifest), {
+        httpMetadata: { contentType: 'application/json' },
+      });
+
+      return jsonResponse({
+        success: true,
+        key,
+        title,
+        bookmark: newEntry,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       return jsonResponse({ error: message }, 500);
@@ -99,16 +181,65 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
     }
   }
 
+  // POST /api/progress/:key/toggle-read - toggle read status
+  if (path.match(/^\/api\/progress\/[^/]+\/toggle-read$/) && request.method === 'POST') {
+    const key = decodeURIComponent(path.replace('/api/progress/', '').replace('/toggle-read', ''));
+    try {
+      const existing = await env.NIKK_BOOKMARK_PROGRESS.get(key);
+      const currentProgress: ReadingProgress = existing
+        ? JSON.parse(existing)
+        : { bookmarkKey: key, scrollPosition: 0, scrollPercentage: 0, lastReadAt: new Date().toISOString(), isRead: false, isFavourite: false };
+
+      const progress: ReadingProgress = {
+        ...currentProgress,
+        isRead: !currentProgress.isRead,
+      };
+      await env.NIKK_BOOKMARK_PROGRESS.put(key, JSON.stringify(progress));
+      return jsonResponse({ success: true, progress });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return jsonResponse({ error: message }, 500);
+    }
+  }
+
+  // POST /api/progress/:key/toggle-favourite - toggle favourite status
+  if (path.match(/^\/api\/progress\/[^/]+\/toggle-favourite$/) && request.method === 'POST') {
+    const key = decodeURIComponent(path.replace('/api/progress/', '').replace('/toggle-favourite', ''));
+    try {
+      const existing = await env.NIKK_BOOKMARK_PROGRESS.get(key);
+      const currentProgress: ReadingProgress = existing
+        ? JSON.parse(existing)
+        : { bookmarkKey: key, scrollPosition: 0, scrollPercentage: 0, lastReadAt: new Date().toISOString(), isRead: false, isFavourite: false };
+
+      const progress: ReadingProgress = {
+        ...currentProgress,
+        isFavourite: !currentProgress.isFavourite,
+      };
+      await env.NIKK_BOOKMARK_PROGRESS.put(key, JSON.stringify(progress));
+      return jsonResponse({ success: true, progress });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return jsonResponse({ error: message }, 500);
+    }
+  }
+
   // POST /api/progress/:key - save progress for a bookmark
-  if (path.startsWith('/api/progress/') && request.method === 'POST') {
+  if (path.startsWith('/api/progress/') && !path.includes('/toggle-') && request.method === 'POST') {
     const key = decodeURIComponent(path.replace('/api/progress/', ''));
     try {
       const body = await request.json() as { scrollPosition: number; scrollPercentage: number };
+
+      // Preserve existing isRead and isFavourite status
+      const existing = await env.NIKK_BOOKMARK_PROGRESS.get(key);
+      const existingProgress = existing ? JSON.parse(existing) as ReadingProgress : null;
+
       const progress: ReadingProgress = {
         bookmarkKey: key,
         scrollPosition: body.scrollPosition,
         scrollPercentage: body.scrollPercentage,
         lastReadAt: new Date().toISOString(),
+        isRead: existingProgress?.isRead ?? false,
+        isFavourite: existingProgress?.isFavourite ?? false,
       };
       await env.NIKK_BOOKMARK_PROGRESS.put(key, JSON.stringify(progress));
       return jsonResponse({ success: true, progress });
@@ -248,6 +379,53 @@ function handleCors(): Response {
   });
 }
 
+async function getManifest(env: Env): Promise<BookmarkManifest | null> {
+  const object = await env.BOOKMARK_BUCKET.get(MANIFEST_KEY);
+  if (!object) {
+    return null;
+  }
+  return object.json() as Promise<BookmarkManifest>;
+}
+
+async function scrapeWithFirecrawl(url: string, apiKey: string): Promise<FirecrawlResponse> {
+  const response = await fetch(FIRECRAWL_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      url,
+      formats: ['markdown'],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Firecrawl API error (${response.status}): ${errorText}`);
+  }
+
+  return response.json();
+}
+
+function generateKey(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .substring(0, 100);
+}
+
+function isValidUrl(urlString: string): boolean {
+  try {
+    const url = new URL(urlString);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 function getListPageHtml(): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -255,6 +433,7 @@ function getListPageHtml(): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bookmark Reader</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23fabd2f'><path d='M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap&subset=vietnamese" rel="stylesheet">
@@ -360,11 +539,173 @@ function getListPageHtml(): string {
       border: 1px solid #fb4934;
       border-radius: 8px;
     }
+    .add-btn {
+      position: fixed;
+      right: 1.5rem;
+      bottom: 1.5rem;
+      width: 56px;
+      height: 56px;
+      background: #fabd2f;
+      color: #282828;
+      border: none;
+      border-radius: 50%;
+      cursor: pointer;
+      font-size: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      transition: transform 0.2s, opacity 0.2s;
+      z-index: 100;
+    }
+    .add-btn:hover { transform: scale(1.1); }
+    .add-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 200;
+      padding: 1rem;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: #3c3836;
+      border-radius: 12px;
+      padding: 1.5rem;
+      width: 100%;
+      max-width: 500px;
+      border: 1px solid #504945;
+    }
+    .modal h2 {
+      color: #fabd2f;
+      margin-bottom: 1rem;
+      font-size: 1.25rem;
+    }
+    .modal input[type="url"] {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      font-size: 1rem;
+      border: 2px solid #504945;
+      border-radius: 6px;
+      background: #282828;
+      color: #ebdbb2;
+      font-family: inherit;
+      margin-bottom: 1rem;
+    }
+    .modal input[type="url"]:focus { outline: none; border-color: #fabd2f; }
+    .modal input[type="url"]:disabled { opacity: 0.5; }
+    .modal-buttons {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: flex-end;
+    }
+    .modal-btn {
+      padding: 0.6rem 1.25rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.95rem;
+      font-family: inherit;
+      transition: opacity 0.2s;
+    }
+    .modal-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .modal-btn.primary { background: #fabd2f; color: #282828; font-weight: 600; }
+    .modal-btn.secondary { background: #504945; color: #ebdbb2; }
+    .modal-status {
+      margin-bottom: 1rem;
+      padding: 0.75rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      display: none;
+    }
+    .modal-status.loading { display: flex; align-items: center; gap: 0.5rem; background: #504945; }
+    .modal-status.success { display: block; background: #3d5a3d; color: #b8bb26; }
+    .modal-status.error { display: block; background: #5a3d3d; color: #fb4934; }
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .tab-btn {
+      padding: 0.6rem 1.25rem;
+      border: 2px solid #504945;
+      border-radius: 6px;
+      background: transparent;
+      color: #928374;
+      font-family: inherit;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-btn:hover { border-color: #fabd2f; color: #ebdbb2; }
+    .tab-btn.active {
+      background: #fabd2f;
+      border-color: #fabd2f;
+      color: #282828;
+      font-weight: 600;
+    }
+    .tab-count {
+      margin-left: 0.25rem;
+      opacity: 0.8;
+    }
+    .bookmark-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 0.5rem;
+    }
+    .toggle-read-btn {
+      background: none;
+      border: 2px solid #504945;
+      border-radius: 4px;
+      width: 24px;
+      height: 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all 0.2s;
+      color: #928374;
+    }
+    .toggle-read-btn:hover { border-color: #b8bb26; color: #b8bb26; }
+    .toggle-read-btn.read {
+      background: #b8bb26;
+      border-color: #b8bb26;
+      color: #282828;
+    }
+    .toggle-fav-btn {
+      background: none;
+      border: none;
+      width: 24px;
+      height: 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 1.1rem;
+      color: #504945;
+      transition: all 0.2s;
+    }
+    .toggle-fav-btn:hover { color: #fabd2f; }
+    .toggle-fav-btn.favourite { color: #fabd2f; }
   </style>
 </head>
 <body>
   <div class="container">
     <h1>Bookmark Reader</h1>
+    <div class="tabs" id="tabs" style="display:none;">
+      <button class="tab-btn active" data-tab="unread" id="tabUnread">Unread<span class="tab-count" id="countUnread">(0)</span></button>
+      <button class="tab-btn" data-tab="read" id="tabRead">Read<span class="tab-count" id="countRead">(0)</span></button>
+      <button class="tab-btn" data-tab="favourites" id="tabFavourites">★<span class="tab-count" id="countFavourites">(0)</span></button>
+    </div>
     <div id="content">
       <div class="loading">
         <div class="spinner"></div>
@@ -372,9 +713,31 @@ function getListPageHtml(): string {
       </div>
     </div>
   </div>
+
+  <button class="add-btn" id="addBtn" title="Add bookmark">+</button>
+
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal">
+      <h2>Add Bookmark</h2>
+      <div class="modal-status" id="modalStatus">
+        <div class="spinner" style="width:18px;height:18px;border-width:2px;"></div>
+        <span id="statusText">Scraping...</span>
+      </div>
+      <input type="url" id="urlInput" placeholder="https://example.com/article" required>
+      <div class="modal-buttons">
+        <button class="modal-btn secondary" id="cancelBtn">Cancel</button>
+        <button class="modal-btn primary" id="scrapeBtn">Scrape</button>
+      </div>
+    </div>
+  </div>
+
   <script>
+    let allBookmarks = [];
+    let currentTab = 'unread';
+
     async function loadBookmarks() {
       const content = document.getElementById('content');
+      const tabs = document.getElementById('tabs');
       try {
         const res = await fetch('/api/bookmarks');
         const data = await res.json();
@@ -382,39 +745,132 @@ function getListPageHtml(): string {
         if (data.error) throw new Error(data.error);
 
         if (!data.bookmarks || data.bookmarks.length === 0) {
+          tabs.style.display = 'none';
           content.innerHTML = '<div class="empty-state">No bookmarks found.</div>';
           return;
         }
 
-        const html = data.bookmarks.map(bookmark => {
-          const progress = bookmark.progress?.scrollPercentage || 0;
-          const lastRead = bookmark.progress?.lastReadAt
-            ? new Date(bookmark.progress.lastReadAt).toLocaleDateString()
-            : 'Not started';
-
-          return \`
-            <div class="bookmark-card" onclick="window.location.href='/read/\${encodeURIComponent(bookmark.key)}'">
-              <div class="bookmark-title">\${escapeHtml(bookmark.title)}</div>
-              \${bookmark.description ? \`<div class="bookmark-description">\${escapeHtml(bookmark.description)}</div>\` : ''}
-              <div class="bookmark-meta">
-                <div style="display: flex; align-items: center; gap: 0.5rem;">
-                  <div class="progress-bar">
-                    <div class="progress-fill" style="width: \${progress}%"></div>
-                  </div>
-                  <span class="progress-text">\${Math.round(progress)}%</span>
-                </div>
-                <span>Last read: \${lastRead}</span>
-              </div>
-              <div class="source-url">\${escapeHtml(bookmark.url)}</div>
-            </div>
-          \`;
-        }).join('');
-
-        content.innerHTML = '<div class="bookmark-list">' + html + '</div>';
+        allBookmarks = data.bookmarks;
+        tabs.style.display = 'flex';
+        updateCounts();
+        renderBookmarks();
       } catch (error) {
         content.innerHTML = '<div class="error-state">Error: ' + escapeHtml(error.message) + '</div>';
       }
     }
+
+    function updateCounts() {
+      const unread = allBookmarks.filter(b => !b.progress?.isRead).length;
+      const read = allBookmarks.filter(b => b.progress?.isRead).length;
+      const favourites = allBookmarks.filter(b => b.progress?.isFavourite).length;
+      document.getElementById('countUnread').textContent = '(' + unread + ')';
+      document.getElementById('countRead').textContent = '(' + read + ')';
+      document.getElementById('countFavourites').textContent = '(' + favourites + ')';
+    }
+
+    function renderBookmarks() {
+      const content = document.getElementById('content');
+      let filtered;
+      let emptyMessage;
+
+      if (currentTab === 'favourites') {
+        filtered = allBookmarks.filter(b => b.progress?.isFavourite);
+        emptyMessage = 'No favourite bookmarks.';
+      } else if (currentTab === 'read') {
+        filtered = allBookmarks.filter(b => b.progress?.isRead);
+        emptyMessage = 'No read bookmarks.';
+      } else {
+        filtered = allBookmarks.filter(b => !b.progress?.isRead);
+        emptyMessage = 'No unread bookmarks.';
+      }
+
+      if (filtered.length === 0) {
+        content.innerHTML = '<div class="empty-state">' + emptyMessage + '</div>';
+        return;
+      }
+
+      const html = filtered.map(bookmark => {
+        const progress = bookmark.progress?.scrollPercentage || 0;
+        const lastRead = bookmark.progress?.lastReadAt
+          ? new Date(bookmark.progress.lastReadAt).toLocaleDateString()
+          : 'Not started';
+        const isRead = bookmark.progress?.isRead || false;
+        const isFavourite = bookmark.progress?.isFavourite || false;
+
+        return \`
+          <div class="bookmark-card">
+            <div class="bookmark-header">
+              <div class="bookmark-title" onclick="window.location.href='/read/\${encodeURIComponent(bookmark.key)}'" style="cursor:pointer;flex:1;">\${escapeHtml(bookmark.title)}</div>
+              <button class="toggle-fav-btn \${isFavourite ? 'favourite' : ''}" onclick="event.stopPropagation(); toggleFavourite('\${bookmark.key}')" title="\${isFavourite ? 'Remove from favourites' : 'Add to favourites'}">★</button>
+              <button class="toggle-read-btn \${isRead ? 'read' : ''}" onclick="event.stopPropagation(); toggleRead('\${bookmark.key}')" title="\${isRead ? 'Mark as unread' : 'Mark as read'}">
+                \${isRead ? '✓' : ''}
+              </button>
+            </div>
+            \${bookmark.description ? \`<div class="bookmark-description" onclick="window.location.href='/read/\${encodeURIComponent(bookmark.key)}'" style="cursor:pointer;">\${escapeHtml(bookmark.description)}</div>\` : ''}
+            <div class="bookmark-meta" onclick="window.location.href='/read/\${encodeURIComponent(bookmark.key)}'" style="cursor:pointer;">
+              <div style="display: flex; align-items: center; gap: 0.5rem;">
+                <div class="progress-bar">
+                  <div class="progress-fill" style="width: \${progress}%"></div>
+                </div>
+                <span class="progress-text">\${Math.round(progress)}%</span>
+              </div>
+              <span>Last read: \${lastRead}</span>
+            </div>
+            <div class="source-url" onclick="window.location.href='/read/\${encodeURIComponent(bookmark.key)}'" style="cursor:pointer;">\${escapeHtml(bookmark.url)}</div>
+          </div>
+        \`;
+      }).join('');
+
+      content.innerHTML = '<div class="bookmark-list">' + html + '</div>';
+    }
+
+    async function toggleRead(key) {
+      try {
+        await fetch('/api/progress/' + encodeURIComponent(key) + '/toggle-read', { method: 'POST' });
+        const bookmark = allBookmarks.find(b => b.key === key);
+        if (bookmark) {
+          if (!bookmark.progress) {
+            bookmark.progress = { bookmarkKey: key, scrollPosition: 0, scrollPercentage: 0, lastReadAt: new Date().toISOString(), isRead: true, isFavourite: false };
+          } else {
+            bookmark.progress.isRead = !bookmark.progress.isRead;
+          }
+        }
+        updateCounts();
+        renderBookmarks();
+      } catch (error) {
+        console.error('Failed to toggle read status:', error);
+      }
+    }
+
+    async function toggleFavourite(key) {
+      try {
+        await fetch('/api/progress/' + encodeURIComponent(key) + '/toggle-favourite', { method: 'POST' });
+        const bookmark = allBookmarks.find(b => b.key === key);
+        if (bookmark) {
+          if (!bookmark.progress) {
+            bookmark.progress = { bookmarkKey: key, scrollPosition: 0, scrollPercentage: 0, lastReadAt: new Date().toISOString(), isRead: false, isFavourite: true };
+          } else {
+            bookmark.progress.isFavourite = !bookmark.progress.isFavourite;
+          }
+        }
+        updateCounts();
+        renderBookmarks();
+      } catch (error) {
+        console.error('Failed to toggle favourite status:', error);
+      }
+    }
+
+    function switchTab(tab) {
+      currentTab = tab;
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tab);
+      });
+      renderBookmarks();
+    }
+
+    document.getElementById('tabUnread').addEventListener('click', () => switchTab('unread'));
+    document.getElementById('tabRead').addEventListener('click', () => switchTab('read'));
+    document.getElementById('tabFavourites').addEventListener('click', () => switchTab('favourites'));
 
     function escapeHtml(text) {
       if (!text) return '';
@@ -423,7 +879,91 @@ function getListPageHtml(): string {
       return div.innerHTML;
     }
 
+    // Modal functionality
+    const addBtn = document.getElementById('addBtn');
+    const modalOverlay = document.getElementById('modalOverlay');
+    const urlInput = document.getElementById('urlInput');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const scrapeBtn = document.getElementById('scrapeBtn');
+    const modalStatus = document.getElementById('modalStatus');
+    const statusText = document.getElementById('statusText');
+
+    function openModal() {
+      modalOverlay.classList.add('open');
+      urlInput.value = '';
+      resetStatus();
+      urlInput.focus();
+    }
+
+    function closeModal() {
+      modalOverlay.classList.remove('open');
+      resetStatus();
+    }
+
+    function resetStatus() {
+      modalStatus.className = 'modal-status';
+      urlInput.disabled = false;
+      scrapeBtn.disabled = false;
+      cancelBtn.disabled = false;
+    }
+
+    function setStatus(type, message) {
+      modalStatus.className = 'modal-status ' + type;
+      statusText.textContent = message;
+    }
+
+    async function scrapeUrl() {
+      const url = urlInput.value.trim();
+      if (!url) return;
+
+      urlInput.disabled = true;
+      scrapeBtn.disabled = true;
+      cancelBtn.disabled = true;
+      setStatus('loading', 'Scraping content...');
+
+      try {
+        const res = await fetch('/api/scrape', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          setStatus('success', 'Added: ' + data.title);
+          setTimeout(() => {
+            closeModal();
+            loadBookmarks();
+          }, 1500);
+        } else {
+          throw new Error(data.error || 'Scraping failed');
+        }
+      } catch (error) {
+        setStatus('error', 'Error: ' + error.message);
+        urlInput.disabled = false;
+        scrapeBtn.disabled = false;
+        cancelBtn.disabled = false;
+      }
+    }
+
+    addBtn.addEventListener('click', openModal);
+    cancelBtn.addEventListener('click', closeModal);
+    scrapeBtn.addEventListener('click', scrapeUrl);
+    modalOverlay.addEventListener('click', (e) => {
+      if (e.target === modalOverlay) closeModal();
+    });
+    urlInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') scrapeUrl();
+    });
+
     loadBookmarks();
+
+    // Refresh when navigating back (bfcache restoration)
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted) {
+        loadBookmarks();
+      }
+    });
   </script>
 </body>
 </html>`;
@@ -436,11 +976,16 @@ function getReadingPageHtml(key: string): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Reading - Bookmark Reader</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23fabd2f'><path d='M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap&subset=vietnamese" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      overflow-x: hidden;
+      max-width: 100vw;
+    }
     body {
       font-family: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
       background: #282828;
@@ -476,6 +1021,36 @@ function getReadingPageHtml(key: string): string {
       gap: 0.75rem;
       font-size: 0.9rem;
     }
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .header-btn {
+      background: none;
+      border: 2px solid #504945;
+      border-radius: 6px;
+      width: 36px;
+      height: 36px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      color: #928374;
+      font-size: 1.1rem;
+    }
+    .header-btn:hover { border-color: #fabd2f; color: #ebdbb2; }
+    .header-btn.active {
+      background: #fabd2f;
+      border-color: #fabd2f;
+      color: #282828;
+    }
+    .header-btn.fav-btn.active {
+      background: transparent;
+      border-color: #fabd2f;
+      color: #fabd2f;
+    }
     .progress-bar-header {
       width: 120px;
       height: 6px;
@@ -487,7 +1062,7 @@ function getReadingPageHtml(key: string): string {
       height: 100%;
       background: linear-gradient(90deg, #fabd2f, #b8bb26);
       border-radius: 3px;
-      transition: width 0.1s;
+      /* no transition for smooth scroll tracking */
     }
     .container {
       max-width: 800px;
@@ -631,6 +1206,11 @@ function getReadingPageHtml(key: string): string {
       padding: 0.75rem;
       margin-bottom: 0.75rem;
       border: 1px solid #504945;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .annotation-item:hover {
+      border-color: #fabd2f;
     }
     .annotation-text {
       font-style: italic;
@@ -734,6 +1314,10 @@ function getReadingPageHtml(key: string): string {
       </div>
       <span id="progressText">0%</span>
     </div>
+    <div class="header-actions">
+      <button class="header-btn fav-btn" id="favBtn" title="Add to favourites">★</button>
+      <button class="header-btn read-btn" id="readBtn" title="Mark as read">✓</button>
+    </div>
   </header>
 
   <div class="container">
@@ -777,6 +1361,8 @@ function getReadingPageHtml(key: string): string {
     let selectionRange = null;
     let scrollTimeout = null;
     let lastSavedPosition = 0;
+    let isRead = false;
+    let isFavourite = false;
 
     async function loadContent() {
       const content = document.getElementById('content');
@@ -807,6 +1393,11 @@ function getReadingPageHtml(key: string): string {
 
         renderAnnotations();
         highlightAnnotationsInContent();
+
+        // Load read/favourite state
+        isRead = progressData.progress?.isRead || false;
+        isFavourite = progressData.progress?.isFavourite || false;
+        updateActionButtons();
 
         // Restore scroll position
         if (progressData.progress?.scrollPosition) {
@@ -867,15 +1458,15 @@ function getReadingPageHtml(key: string): string {
 
         updateProgressDisplay(percentage);
 
-        // Debounce save (every 5 seconds)
+        // Debounce save (300ms)
         clearTimeout(scrollTimeout);
         scrollTimeout = setTimeout(() => {
-          if (Math.abs(scrollTop - lastSavedPosition) > 100) {
+          if (Math.abs(scrollTop - lastSavedPosition) > 50) {
             saveProgress(scrollTop, percentage);
             lastSavedPosition = scrollTop;
           }
-        }, 5000);
-      });
+        }, 300);
+      }, { passive: true });
     }
 
     function updateProgressDisplay(percentage) {
@@ -896,31 +1487,76 @@ function getReadingPageHtml(key: string): string {
     }
 
     function setupTextSelection() {
-      document.getElementById('markdownContent')?.addEventListener('mouseup', (e) => {
-        const selection = window.getSelection();
-        const text = selection.toString().trim();
+      const content = document.getElementById('markdownContent');
+      if (!content) return;
 
-        if (text.length > 0) {
-          selectedText = text;
+      // Desktop: mouseup
+      content.addEventListener('mouseup', handleTextSelection);
+
+      // Mobile: touchend with delay to let selection complete
+      content.addEventListener('touchend', (e) => {
+        setTimeout(() => handleTextSelection(e), 100);
+      });
+
+      // Hide popup when clicking/touching outside
+      document.addEventListener('mousedown', handleOutsideClick);
+      document.addEventListener('touchstart', handleOutsideClick);
+    }
+
+    function handleTextSelection(e) {
+      const selection = window.getSelection();
+      const text = selection.toString().trim();
+
+      if (text.length > 0) {
+        selectedText = text;
+        try {
           selectionRange = selection.getRangeAt(0).cloneRange();
-          showSelectionPopup(e.clientX, e.clientY);
+        } catch (err) {
+          return;
         }
-      });
 
-      document.addEventListener('mousedown', (e) => {
-        const popup = document.getElementById('selectionPopup');
-        if (!popup.contains(e.target) && popup.classList.contains('visible')) {
-          hideSelectionPopup();
+        // Get position for popup
+        let x, y;
+        if (e.type === 'touchend' && e.changedTouches?.length > 0) {
+          x = e.changedTouches[0].clientX;
+          y = e.changedTouches[0].clientY;
+        } else if (e.clientX !== undefined) {
+          x = e.clientX;
+          y = e.clientY;
+        } else {
+          // Fallback: use selection rect
+          const rect = selectionRange.getBoundingClientRect();
+          x = rect.left + rect.width / 2;
+          y = rect.bottom;
         }
-      });
+
+        showSelectionPopup(x, y);
+      }
+    }
+
+    function handleOutsideClick(e) {
+      const popup = document.getElementById('selectionPopup');
+      if (!popup.contains(e.target) && popup.classList.contains('visible')) {
+        hideSelectionPopup();
+      }
     }
 
     function showSelectionPopup(x, y) {
       const popup = document.getElementById('selectionPopup');
-      popup.style.left = Math.min(x, window.innerWidth - 300) + 'px';
-      popup.style.top = (y + window.scrollY + 10) + 'px';
+      const popupWidth = 280;
+
+      // Position popup, ensuring it stays within viewport
+      let left = Math.max(10, Math.min(x - popupWidth / 2, window.innerWidth - popupWidth - 10));
+      let top = y + window.scrollY + 10;
+
+      popup.style.left = left + 'px';
+      popup.style.top = top + 'px';
       popup.classList.add('visible');
-      document.getElementById('annotationInput').focus();
+
+      // Don't auto-focus on mobile to prevent keyboard from immediately appearing
+      if (window.innerWidth > 768) {
+        document.getElementById('annotationInput').focus();
+      }
     }
 
     function hideSelectionPopup() {
@@ -934,15 +1570,8 @@ function getReadingPageHtml(key: string): string {
       const note = document.getElementById('annotationInput').value.trim();
       if (!selectedText || !selectionRange) return;
 
-      // Highlight the selected text immediately
-      try {
-        const highlight = document.createElement('mark');
-        highlight.className = 'annotation-highlight';
-        highlight.setAttribute('data-annotation-text', selectedText);
-        selectionRange.surroundContents(highlight);
-      } catch (e) {
-        console.warn('Could not highlight selection:', e);
-      }
+      // Store range before async operation
+      const rangeToHighlight = selectionRange.cloneRange();
 
       try {
         const res = await fetch('/api/annotations/' + encodeURIComponent(bookmarkKey), {
@@ -960,6 +1589,17 @@ function getReadingPageHtml(key: string): string {
         if (data.annotation) {
           annotations.push(data.annotation);
           renderAnnotations();
+
+          // Highlight the selected text with proper ID and click handler
+          try {
+            const highlight = document.createElement('mark');
+            highlight.className = 'annotation-highlight';
+            highlight.setAttribute('data-annotation-id', data.annotation.id);
+            highlight.onclick = () => scrollToAnnotationInPanel(data.annotation.id);
+            rangeToHighlight.surroundContents(highlight);
+          } catch (e) {
+            console.warn('Could not highlight selection:', e);
+          }
         }
         hideSelectionPopup();
       } catch (e) {
@@ -990,15 +1630,39 @@ function getReadingPageHtml(key: string): string {
       }
 
       list.innerHTML = annotations.map(a => \`
-        <div class="annotation-item" data-annotation-id="\${a.id}">
+        <div class="annotation-item" data-annotation-id="\${a.id}" onclick="scrollToHighlightedText('\${a.id}')">
           <div class="annotation-text">"\${escapeHtml(a.selectedText)}"</div>
           \${a.note ? \`<div class="annotation-note">\${escapeHtml(a.note)}</div>\` : ''}
           <div class="annotation-meta">
             <span>\${new Date(a.createdAt).toLocaleDateString()}</span>
-            <button class="annotation-delete" onclick="deleteAnnotation('\${a.id}')">Delete</button>
+            <button class="annotation-delete" onclick="event.stopPropagation(); deleteAnnotation('\${a.id}')">Delete</button>
           </div>
         </div>
       \`).join('');
+    }
+
+    function scrollToHighlightedText(annotationId) {
+      const content = document.getElementById('markdownContent');
+      if (!content) return;
+
+      const highlight = content.querySelector(\`[data-annotation-id="\${annotationId}"]\`);
+      if (highlight) {
+        // Close panel on mobile for better view
+        if (window.innerWidth <= 768) {
+          document.getElementById('annotationPanel').classList.remove('open');
+        }
+
+        // Scroll to highlighted text
+        highlight.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        // Flash effect to draw attention
+        highlight.style.outline = '2px solid #fabd2f';
+        highlight.style.outlineOffset = '2px';
+        setTimeout(() => {
+          highlight.style.outline = '';
+          highlight.style.outlineOffset = '';
+        }, 2000);
+      }
     }
 
     function highlightAnnotationsInContent() {
@@ -1067,6 +1731,46 @@ function getReadingPageHtml(key: string): string {
       div.textContent = text;
       return div.innerHTML;
     }
+
+    function updateActionButtons() {
+      const readBtn = document.getElementById('readBtn');
+      const favBtn = document.getElementById('favBtn');
+
+      readBtn.classList.toggle('active', isRead);
+      readBtn.title = isRead ? 'Mark as unread' : 'Mark as read';
+
+      favBtn.classList.toggle('active', isFavourite);
+      favBtn.title = isFavourite ? 'Remove from favourites' : 'Add to favourites';
+    }
+
+    async function toggleReadStatus() {
+      try {
+        const res = await fetch('/api/progress/' + encodeURIComponent(bookmarkKey) + '/toggle-read', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          isRead = data.progress.isRead;
+          updateActionButtons();
+        }
+      } catch (error) {
+        console.error('Failed to toggle read status:', error);
+      }
+    }
+
+    async function toggleFavouriteStatus() {
+      try {
+        const res = await fetch('/api/progress/' + encodeURIComponent(bookmarkKey) + '/toggle-favourite', { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+          isFavourite = data.progress.isFavourite;
+          updateActionButtons();
+        }
+      } catch (error) {
+        console.error('Failed to toggle favourite status:', error);
+      }
+    }
+
+    document.getElementById('readBtn').addEventListener('click', toggleReadStatus);
+    document.getElementById('favBtn').addEventListener('click', toggleFavouriteStatus);
 
     loadContent();
   </script>

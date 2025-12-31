@@ -5,8 +5,8 @@ import { readDirectory, readTranslations, AllTranslations } from "@/utils/listFi
 import { GetStaticPaths, GetStaticProps, NextPage } from "next";
 import { homeContext } from "..";
 import Head from "next/head";
-import fs from "fs";
-import path from "path";
+
+const MANIFEST_URL = 'https://r2.nikkdev.com/bookmark/manifest.json';
 
 interface BookmarkMeta {
   title: string;
@@ -21,15 +21,17 @@ interface BookmarkPageProps {
   meta: BookmarkMeta;
 }
 
-// Read manifest at build time
-function readManifest(): BookmarkManifest {
-  const manifestPath = path.join(process.cwd(), 'public/bookmark/manifest.json');
-  const content = fs.readFileSync(manifestPath, 'utf-8');
-  return JSON.parse(content);
+// Fetch manifest from R2 at build time
+async function fetchManifest(): Promise<BookmarkManifest> {
+  const response = await fetch(MANIFEST_URL);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch manifest: ${response.status}`);
+  }
+  return response.json();
 }
 
 export const getStaticPaths: GetStaticPaths = async () => {
-  const manifest = readManifest();
+  const manifest = await fetchManifest();
 
   const paths = manifest.bookmarks.map((bookmark: BookmarkManifestItem) => ({
     params: { slug: String(bookmark.id) }
