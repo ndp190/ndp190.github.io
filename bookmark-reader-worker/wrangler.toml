@@ -35,3 +35,20 @@ id = "test-progress-kv"
 [[env.test.kv_namespaces]]
 binding = "NIKK_BOOKMARK_ANNOTATION"
 id = "test-annotation-kv"
+
+# Local development environment
+[env.local]
+[env.local.vars]
+SKIP_AUTH = "true"
+
+[[env.local.kv_namespaces]]
+binding = "NIKK_BOOKMARK_PROGRESS"
+id = "local-progress-kv"
+
+[[env.local.kv_namespaces]]
+binding = "NIKK_BOOKMARK_ANNOTATION"
+id = "local-annotation-kv"
+
+[[env.local.r2_buckets]]
+binding = "BOOKMARK_BUCKET"
+bucket_name = "local-nikk"

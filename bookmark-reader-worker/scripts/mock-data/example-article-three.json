@@ -1,0 +1,15 @@
+{
+  "url": "https://example.com/article-three",
+  "scrapedAt": "2024-12-31T00:00:00.000Z",
+  "firecrawlResponse": {
+    "success": true,
+    "data": {
+      "markdown": "# Example Article Three: Building Better Tools\n\nA third mock article for comprehensive testing.\n\n## The Importance of Good Tooling\n\nGood developer tools can significantly improve productivity. The bookmark reader is designed to help you save and organize articles for later reading.\n\n## Features Overview\n\n| Feature | Description |\n|---------|-------------|\n| Progress Tracking | Saves your scroll position |\n| Annotations | Highlight and add notes |\n| Read/Unread | Organize by read status |\n| Scraping | Add new bookmarks easily |\n\n## Architecture\n\nThe bookmark reader uses:\n\n- **Cloudflare Workers** for serverless compute\n- **R2** for storing scraped content\n- **KV** for user progress and annotations\n\n## Best Practices\n\n1. Always test locally before deploying\n2. Use mock data for consistent testing\n3. Check all edge cases\n\n## Final Thoughts\n\nBuilding tools that you actually use yourself is one of the best ways to ensure quality. Happy reading!",
+      "metadata": {
+        "title": "Example Article Three: Building Better Tools",
+        "description": "A third mock article for comprehensive testing.",
+        "sourceURL": "https://example.com/article-three"
+      }
+    }
+  }
+}

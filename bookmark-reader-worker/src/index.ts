@@ -885,6 +885,13 @@ function getListPageHtml(): string {
     });
 
     loadBookmarks();
+
+    // Refresh when navigating back (bfcache restoration)
+    window.addEventListener('pageshow', (event) => {
+      if (event.persisted) {
+        loadBookmarks();
+      }
+    });
   </script>
 </body>
 </html>`;

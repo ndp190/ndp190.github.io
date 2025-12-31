@@ -1,0 +1,15 @@
+{
+  "url": "https://example.com/article-two",
+  "scrapedAt": "2024-12-31T00:00:00.000Z",
+  "firecrawlResponse": {
+    "success": true,
+    "data": {
+      "markdown": "# Example Article Two: Understanding Local Development\n\nAnother mock article to test the read/unread feature.\n\n## Why Local Development Matters\n\nLocal development allows you to iterate quickly without deploying to production. This is especially important when testing new features like the read/unread functionality.\n\n## Setting Up Your Environment\n\n1. Clone the repository\n2. Install dependencies with `npm install`\n3. Run `npx wrangler dev --env local --persist`\n4. Seed mock data\n\n## Testing the Read/Unread Feature\n\nThe new read/unread feature includes:\n\n- **Tabs**: Switch between unread and read bookmarks\n- **Toggle**: Click the checkbox to mark as read/unread\n- **Counts**: See how many items are in each category\n\n## Troubleshooting\n\n> If you encounter issues, check the browser console for errors.\n\n## Summary\n\nLocal development with mock data is the best way to test new features before deployment.",
+      "metadata": {
+        "title": "Example Article Two: Understanding Local Development",
+        "description": "Another mock article to test the read/unread feature.",
+        "sourceURL": "https://example.com/article-two"
+      }
+    }
+  }
+}

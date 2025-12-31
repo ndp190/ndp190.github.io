@@ -1,0 +1,15 @@
+{
+  "url": "https://example.com/article-one",
+  "scrapedAt": "2024-12-31T00:00:00.000Z",
+  "firecrawlResponse": {
+    "success": true,
+    "data": {
+      "markdown": "# Example Article One: A Deep Dive into Testing\n\nThis is mock content for local testing.\n\n## Section 1\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris.\n\n## Section 2\n\nDuis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident.\n\n### Code Example\n\n```javascript\nfunction testBookmarkReader() {\n  console.log('Testing locally!');\n  return true;\n}\n```\n\n## Key Points\n\n- Point one about testing\n- Point two about local development\n- Point three about mock data\n\n## Conclusion\n\nThis concludes our first example article. The bookmark reader should display this content with proper markdown formatting.",
+      "metadata": {
+        "title": "Example Article One: A Deep Dive into Testing",
+        "description": "This is a mock article for testing the bookmark reader locally.",
+        "sourceURL": "https://example.com/article-one"
+      }
+    }
+  }
+}
