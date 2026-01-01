@@ -12,3 +12,9 @@ jest.mock('remark-gfm', () => {
     return {};
   };
 });
+
+jest.mock('rehype-raw', () => {
+  return function rehypeRaw() {
+    return {};
+  };
+});
