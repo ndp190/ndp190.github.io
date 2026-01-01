@@ -317,6 +317,82 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
     }
   }
 
+  // DELETE /api/bookmarks/:key - delete bookmark and all associated data
+  if (path.match(/^\/api\/bookmarks\/[^/]+$/) && request.method === 'DELETE') {
+    const key = decodeURIComponent(path.replace('/api/bookmarks/', ''));
+    try {
+      // 1. Update manifest (remove entry)
+      const manifest = await getManifest(env);
+      if (!manifest) {
+        return jsonResponse({ error: 'Manifest not found' }, 404);
+      }
+      manifest.bookmarks = manifest.bookmarks.filter(b => b.key !== key);
+      manifest.updatedAt = new Date().toISOString();
+      await env.BOOKMARK_BUCKET.put('bookmark/manifest.json', JSON.stringify(manifest));
+
+      // 2. Delete bookmark content from R2
+      await env.BOOKMARK_BUCKET.delete(`bookmark/${key}.json`);
+
+      // 3. Delete enriched data from R2 (ignore if not exists)
+      await env.BOOKMARK_BUCKET.delete(`bookmark/enriched/${key}.json`);
+
+      // 4. Delete progress from KV
+      await env.NIKK_BOOKMARK_PROGRESS.delete(key);
+
+      // 5. Delete annotations from KV
+      await env.NIKK_BOOKMARK_ANNOTATION.delete(key);
+
+      return jsonResponse({ success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return jsonResponse({ error: message }, 500);
+    }
+  }
+
+  // POST /api/sync - sync progress and annotations from KV to R2
+  if (path === '/api/sync' && request.method === 'POST') {
+    try {
+      const manifest = await getManifest(env);
+      if (!manifest) {
+        return jsonResponse({ error: 'Manifest not found' }, 404);
+      }
+
+      const syncedAt = new Date().toISOString();
+      let syncedCount = 0;
+
+      // Sync each bookmark's progress and annotations to R2
+      await Promise.all(
+        manifest.bookmarks.map(async (bookmark: BookmarkEntry) => {
+          const [progressData, annotationsData] = await Promise.all([
+            env.NIKK_BOOKMARK_PROGRESS.get(bookmark.key),
+            env.NIKK_BOOKMARK_ANNOTATION.get(bookmark.key),
+          ]);
+
+          const progress = progressData ? JSON.parse(progressData) as ReadingProgress : null;
+          const annotationList = annotationsData ? JSON.parse(annotationsData) as AnnotationList : null;
+
+          const enrichedBookmark = {
+            progress,
+            annotations: annotationList?.annotations || [],
+            syncedAt,
+          };
+
+          await env.BOOKMARK_BUCKET.put(
+            `bookmark/enriched/${bookmark.key}.json`,
+            JSON.stringify(enrichedBookmark),
+            { httpMetadata: { contentType: 'application/json' } }
+          );
+          syncedCount++;
+        })
+      );
+
+      return jsonResponse({ success: true, syncedCount, syncedAt });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return jsonResponse({ error: message }, 500);
+    }
+  }
+
   return jsonResponse({ error: 'API endpoint not found' }, 404);
 }
 
@@ -447,7 +523,32 @@ function getListPageHtml(): string {
       padding: 2rem;
     }
     .container { max-width: 900px; margin: 0 auto; }
-    h1 { color: #fabd2f; margin-bottom: 2rem; font-size: 2rem; }
+    .page-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+    }
+    h1 { color: #fabd2f; font-size: 2rem; margin: 0; }
+    .sync-btn {
+      padding: 0.5rem 1rem;
+      background: #504945;
+      color: #ebdbb2;
+      border: 2px solid #504945;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.2s;
+    }
+    .sync-btn:hover { border-color: #fabd2f; color: #fabd2f; }
+    .sync-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .sync-btn.syncing .sync-icon { animation: spin 1s linear infinite; }
+    .sync-btn.success { background: #3d5a3d; border-color: #b8bb26; color: #b8bb26; }
+    .sync-btn.error { background: #5a3d3d; border-color: #fb4934; color: #fb4934; }
     .loading {
       display: flex;
       align-items: center;
@@ -470,12 +571,10 @@ function getListPageHtml(): string {
       border-radius: 8px;
       padding: 1.25rem;
       cursor: pointer;
-      transition: transform 0.2s, box-shadow 0.2s;
+      transition: border-color 0.2s;
       border: 1px solid #504945;
     }
     .bookmark-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(250,189,47,0.2);
       border-color: #fabd2f;
     }
     .bookmark-title {
@@ -518,13 +617,19 @@ function getListPageHtml(): string {
       transition: width 0.3s;
     }
     .progress-text { color: #b8bb26; font-weight: 500; }
+    .bookmark-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 0.5rem;
+    }
     .source-url {
       color: #928374;
       font-size: 0.75rem;
-      margin-top: 0.5rem;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      flex: 1;
     }
     .empty-state {
       text-align: center;
@@ -696,11 +801,36 @@ function getListPageHtml(): string {
     }
     .toggle-fav-btn:hover { color: #fabd2f; }
     .toggle-fav-btn.favourite { color: #fabd2f; }
+    .open-url-btn, .delete-btn {
+      background: none;
+      border: none;
+      width: 24px;
+      height: 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: #504945;
+      transition: all 0.2s;
+      margin-left: 0.5rem;
+    }
+    .open-url-btn:hover { color: #83a598; }
+    .delete-btn:hover { color: #fb4934; }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Bookmark Reader</h1>
+    <div class="page-header">
+      <h1>Bookmark Reader</h1>
+      <button class="sync-btn" id="syncBtn" title="Sync to R2 for terminal site">
+        <svg class="sync-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M23 4v6h-6M1 20v-6h6"/>
+          <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+        </svg>
+        <span class="sync-text">Sync</span>
+      </button>
+    </div>
     <div class="tabs" id="tabs" style="display:none;">
       <button class="tab-btn active" data-tab="unread" id="tabUnread">Unread<span class="tab-count" id="countUnread">(0)</span></button>
       <button class="tab-btn" data-tab="read" id="tabRead">Read<span class="tab-count" id="countRead">(0)</span></button>
@@ -798,7 +928,7 @@ function getListPageHtml(): string {
         const isFavourite = bookmark.progress?.isFavourite || false;
 
         return \`
-          <div class="bookmark-card">
+          <div class="bookmark-card" data-bookmark-key="\${bookmark.key}">
             <div class="bookmark-header">
               <div class="bookmark-title" onclick="window.location.href='/read/\${encodeURIComponent(bookmark.key)}'" style="cursor:pointer;flex:1;">\${escapeHtml(bookmark.title)}</div>
               <button class="toggle-fav-btn \${isFavourite ? 'favourite' : ''}" onclick="event.stopPropagation(); toggleFavourite('\${bookmark.key}')" title="\${isFavourite ? 'Remove from favourites' : 'Add to favourites'}">★</button>
@@ -816,7 +946,22 @@ function getListPageHtml(): string {
               </div>
               <span>Last read: \${lastRead}</span>
             </div>
-            <div class="source-url" onclick="window.location.href='/read/\${encodeURIComponent(bookmark.key)}'" style="cursor:pointer;">\${escapeHtml(bookmark.url)}</div>
+            <div class="bookmark-footer">
+              <div class="source-url" onclick="window.location.href='/read/\${encodeURIComponent(bookmark.key)}'" style="cursor:pointer;">\${escapeHtml(bookmark.url)}</div>
+              <button class="open-url-btn" onclick="event.stopPropagation(); window.open('\${escapeHtml(bookmark.url)}', '_blank')" title="Open original URL">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                  <polyline points="15 3 21 3 21 9"></polyline>
+                  <line x1="10" y1="14" x2="21" y2="3"></line>
+                </svg>
+              </button>
+              <button class="delete-btn" onclick="event.stopPropagation(); deleteBookmark('\${bookmark.key}')" title="Delete bookmark">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+              </button>
+            </div>
           </div>
         \`;
       }).join('');
@@ -857,6 +1002,33 @@ function getListPageHtml(): string {
         renderBookmarks();
       } catch (error) {
         console.error('Failed to toggle favourite status:', error);
+      }
+    }
+
+    async function deleteBookmark(key) {
+      if (!confirm('Delete this bookmark? This will also remove all annotations and reading progress.')) {
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/bookmarks/' + encodeURIComponent(key), {
+          method: 'DELETE'
+        });
+
+        if (!res.ok) throw new Error('Failed to delete');
+
+        // Remove from local data
+        allBookmarks = allBookmarks.filter(b => b.key !== key);
+
+        // Remove card from DOM
+        const card = document.querySelector('[data-bookmark-key="' + key + '"]');
+        if (card) card.remove();
+
+        // Update counts
+        updateCounts();
+      } catch (e) {
+        alert('Failed to delete bookmark');
+        console.error(e);
       }
     }
 
@@ -956,6 +1128,46 @@ function getListPageHtml(): string {
       if (e.key === 'Enter') scrapeUrl();
     });
 
+    // Sync button functionality
+    const syncBtn = document.getElementById('syncBtn');
+    const syncText = syncBtn.querySelector('.sync-text');
+
+    async function syncToR2() {
+      syncBtn.disabled = true;
+      syncBtn.classList.add('syncing');
+      syncBtn.classList.remove('success', 'error');
+      syncText.textContent = 'Syncing...';
+
+      try {
+        const res = await fetch('/api/sync', { method: 'POST' });
+        const data = await res.json();
+
+        if (data.success) {
+          syncBtn.classList.remove('syncing');
+          syncBtn.classList.add('success');
+          syncText.textContent = 'Synced ' + data.syncedCount;
+          setTimeout(() => {
+            syncBtn.classList.remove('success');
+            syncText.textContent = 'Sync';
+            syncBtn.disabled = false;
+          }, 2000);
+        } else {
+          throw new Error(data.error || 'Sync failed');
+        }
+      } catch (error) {
+        syncBtn.classList.remove('syncing');
+        syncBtn.classList.add('error');
+        syncText.textContent = 'Failed';
+        setTimeout(() => {
+          syncBtn.classList.remove('error');
+          syncText.textContent = 'Sync';
+          syncBtn.disabled = false;
+        }, 2000);
+      }
+    }
+
+    syncBtn.addEventListener('click', syncToR2);
+
     loadBookmarks();
 
     // Refresh when navigating back (bfcache restoration)
@@ -1050,6 +1262,10 @@ function getReadingPageHtml(key: string): string {
       background: transparent;
       border-color: #fabd2f;
       color: #fabd2f;
+    }
+    .header-btn.open-url-btn:hover {
+      border-color: #83a598;
+      color: #83a598;
     }
     .progress-bar-header {
       width: 120px;
@@ -1315,6 +1531,13 @@ function getReadingPageHtml(key: string): string {
       <span id="progressText">0%</span>
     </div>
     <div class="header-actions">
+      <button class="header-btn open-url-btn" id="openUrlBtn" title="Open original URL">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+          <polyline points="15 3 21 3 21 9"></polyline>
+          <line x1="10" y1="14" x2="21" y2="3"></line>
+        </svg>
+      </button>
       <button class="header-btn fav-btn" id="favBtn" title="Add to favourites">★</button>
       <button class="header-btn read-btn" id="readBtn" title="Mark as read">✓</button>
     </div>
@@ -1363,6 +1586,8 @@ function getReadingPageHtml(key: string): string {
     let lastSavedPosition = 0;
     let isRead = false;
     let isFavourite = false;
+    let rawMarkdown = ''; // Store raw markdown for offset calculation
+    let bookmarkUrl = '';
 
     async function loadContent() {
       const content = document.getElementById('content');
@@ -1379,20 +1604,22 @@ function getReadingPageHtml(key: string): string {
 
         if (bookmark.error) throw new Error(bookmark.error);
 
+        bookmarkUrl = bookmark.url || '';
         annotations = annotationsData.annotations || [];
 
-        const markdown = bookmark.firecrawlResponse?.data?.markdown || 'No content available';
+        rawMarkdown = bookmark.firecrawlResponse?.data?.markdown || 'No content available';
         const title = bookmark.firecrawlResponse?.data?.metadata?.title || 'Untitled';
 
         document.title = title + ' - Bookmark Reader';
 
-        // Simple markdown to HTML conversion
-        let html = markdownToHtml(markdown);
+        // Insert annotation markers into markdown, then render
+        const markedMarkdown = insertAnnotationMarkers(rawMarkdown, annotations);
+        let html = markdownToHtml(markedMarkdown);
+        html = replaceMarkersWithHighlights(html);
 
         content.innerHTML = '<div class="content" id="markdownContent">' + html + '</div>';
 
         renderAnnotations();
-        highlightAnnotationsInContent();
 
         // Load read/favourite state
         isRead = progressData.progress?.isRead || false;
@@ -1448,6 +1675,31 @@ function getReadingPageHtml(key: string): string {
         .replace(/\\n/g, '<br>');
 
       return '<p>' + html + '</p>';
+    }
+
+    function insertAnnotationMarkers(markdown, anns) {
+      if (!anns || anns.length === 0) return markdown;
+
+      // Sort by startOffset descending (FILO) to avoid position shifts
+      const sorted = [...anns].sort((a, b) => b.startOffset - a.startOffset);
+
+      let result = markdown;
+      for (const ann of sorted) {
+        const { startOffset, endOffset, id } = ann;
+        // Skip invalid offsets
+        if (startOffset < 0 || endOffset > result.length || startOffset >= endOffset) continue;
+
+        // Insert end marker first (it's after start)
+        result = result.slice(0, endOffset) + '[[HL_END]]' + result.slice(endOffset);
+        result = result.slice(0, startOffset) + '[[HL_START:' + id + ']]' + result.slice(startOffset);
+      }
+      return result;
+    }
+
+    function replaceMarkersWithHighlights(html) {
+      return html
+        .replace(/\\[\\[HL_START:([^\\]]+)\\]\\]/g, '<mark class="annotation-highlight" data-annotation-id="$1" onclick="scrollToAnnotationInPanel(\\'$1\\')">')
+        .replace(/\\[\\[HL_END\\]\\]/g, '</mark>');
     }
 
     function setupScrollTracking() {
@@ -1573,6 +1825,15 @@ function getReadingPageHtml(key: string): string {
       // Store range before async operation
       const rangeToHighlight = selectionRange.cloneRange();
 
+      // Find offset in raw markdown (not rendered HTML)
+      const startOffset = rawMarkdown.indexOf(selectedText);
+      if (startOffset === -1) {
+        console.warn('Could not find selected text in raw markdown');
+        hideSelectionPopup();
+        return;
+      }
+      const endOffset = startOffset + selectedText.length;
+
       try {
         const res = await fetch('/api/annotations/' + encodeURIComponent(bookmarkKey), {
           method: 'POST',
@@ -1580,8 +1841,8 @@ function getReadingPageHtml(key: string): string {
           body: JSON.stringify({
             selectedText,
             note,
-            startOffset: 0,
-            endOffset: selectedText.length
+            startOffset,
+            endOffset
           })
         });
 
@@ -1615,6 +1876,19 @@ function getReadingPageHtml(key: string): string {
           method: 'DELETE'
         });
         annotations = annotations.filter(a => a.id !== id);
+
+        // Remove highlight mark from DOM
+        const content = document.getElementById('markdownContent');
+        if (content) {
+          const marks = content.querySelectorAll('[data-annotation-id="' + id + '"]');
+          marks.forEach(mark => {
+            while (mark.firstChild) {
+              mark.parentNode.insertBefore(mark.firstChild, mark);
+            }
+            mark.remove();
+          });
+        }
+
         renderAnnotations();
       } catch (e) {
         console.error('Failed to delete annotation:', e);
@@ -1665,46 +1939,6 @@ function getReadingPageHtml(key: string): string {
       }
     }
 
-    function highlightAnnotationsInContent() {
-      const content = document.getElementById('markdownContent');
-      if (!content || annotations.length === 0) return;
-
-      annotations.forEach(annotation => {
-        // Skip if already highlighted
-        if (content.querySelector(\`[data-annotation-id="\${annotation.id}"]\`)) return;
-
-        const textToFind = annotation.selectedText;
-        highlightTextInNode(content, textToFind, annotation.id);
-      });
-    }
-
-    function highlightTextInNode(node, text, annotationId) {
-      if (node.nodeType === Node.TEXT_NODE) {
-        const index = node.textContent.indexOf(text);
-        if (index >= 0) {
-          const range = document.createRange();
-          range.setStart(node, index);
-          range.setEnd(node, index + text.length);
-
-          const highlight = document.createElement('mark');
-          highlight.className = 'annotation-highlight';
-          highlight.setAttribute('data-annotation-id', annotationId);
-          highlight.onclick = () => scrollToAnnotationInPanel(annotationId);
-
-          try {
-            range.surroundContents(highlight);
-            return true;
-          } catch (e) {
-            return false;
-          }
-        }
-      } else if (node.nodeType === Node.ELEMENT_NODE && !node.classList?.contains('annotation-highlight')) {
-        for (const child of Array.from(node.childNodes)) {
-          if (highlightTextInNode(child, text, annotationId)) return true;
-        }
-      }
-      return false;
-    }
 
     function scrollToAnnotationInPanel(annotationId) {
       const panel = document.getElementById('annotationPanel');
@@ -1769,6 +2003,9 @@ function getReadingPageHtml(key: string): string {
       }
     }
 
+    document.getElementById('openUrlBtn').addEventListener('click', () => {
+      if (bookmarkUrl) window.open(bookmarkUrl, '_blank');
+    });
     document.getElementById('readBtn').addEventListener('click', toggleReadStatus);
     document.getElementById('favBtn').addEventListener('click', toggleFavouriteStatus);
 

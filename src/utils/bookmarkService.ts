@@ -1,7 +1,14 @@
-import type { BookmarkManifest, BookmarkManifestItem, BookmarkJson, Bookmark } from '../types/bookmark';
+import type { BookmarkManifest, BookmarkManifestItem, BookmarkJson, Bookmark, ReadingProgress, Annotation } from '../types/bookmark';
 
 const R2_BASE_URL = 'https://r2.nikkdev.com/bookmark';
 const MANIFEST_URL = 'https://r2.nikkdev.com/bookmark/manifest.json';
+
+// Enriched bookmark data structure (from worker sync)
+export interface EnrichedBookmark {
+  progress: ReadingProgress | null;
+  annotations: Annotation[];
+  syncedAt: string;
+}
 
 /**
  * Fetch the bookmark manifest (list of all bookmarks with metadata)
@@ -66,4 +73,49 @@ export function getBookmarkMeta(
   id: number
 ): BookmarkManifestItem | undefined {
   return manifest.bookmarks.find(b => b.id === id);
+}
+
+/**
+ * Fetch enriched bookmark data (progress + annotations) from R2
+ * Returns null if not synced yet
+ */
+export async function fetchEnrichedBookmark(key: string): Promise<EnrichedBookmark | null> {
+  const url = `${R2_BASE_URL}/enriched/${key}.json`;
+
+  try {
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return response.json();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch enriched data for all bookmarks in parallel
+ * Returns a map of bookmark key -> enriched data
+ */
+export async function fetchAllEnrichedBookmarks(
+  bookmarks: BookmarkManifestItem[]
+): Promise<Map<string, EnrichedBookmark>> {
+  const results = await Promise.allSettled(
+    bookmarks.map(async (b) => ({
+      key: b.key,
+      data: await fetchEnrichedBookmark(b.key),
+    }))
+  );
+
+  const enrichedMap = new Map<string, EnrichedBookmark>();
+
+  for (const result of results) {
+    if (result.status === 'fulfilled' && result.value.data) {
+      enrichedMap.set(result.value.key, result.value.data);
+    }
+  }
+
+  return enrichedMap;
 }
