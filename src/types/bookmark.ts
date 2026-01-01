@@ -48,3 +48,34 @@ export interface Bookmark {
   url: string;
   markdown: string;
 }
+
+// Reading progress stored in KV
+export interface ReadingProgress {
+  bookmarkKey: string;
+  scrollPosition: number;
+  scrollPercentage: number;
+  lastReadAt: string;
+  isRead: boolean;
+  isFavourite: boolean;
+}
+
+// Annotation stored in KV
+export interface Annotation {
+  id: string;
+  bookmarkKey: string;
+  selectedText: string;
+  note: string;
+  startOffset: number;
+  endOffset: number;
+  createdAt: string;
+}
+
+export interface AnnotationList {
+  annotations: Annotation[];
+}
+
+// Enriched bookmark with progress and annotations (from worker API)
+export interface EnrichedBookmarkItem extends BookmarkManifestItem {
+  progress: ReadingProgress | null;
+  annotations?: Annotation[];
+}

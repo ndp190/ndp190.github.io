@@ -9,6 +9,11 @@ import {
   BookmarkIntro,
   BookmarkTitle,
   BookmarkUrl,
+  BookmarkAnnotation,
+  BookmarkProgressContainer,
+  BookmarkProgressBar,
+  BookmarkProgressFill,
+  BookmarkProgressText,
   LoadingContainer,
   ProgressBar,
   ProgressFill,
@@ -16,7 +21,7 @@ import {
 } from "../styles/Bookmark.styled";
 import { termContext } from "../Terminal";
 import { UsageDiv } from "../styles/Output.styled";
-import { fetchBookmarkManifest, fetchBookmarkContent } from "../../utils/bookmarkService";
+import { fetchBookmarkManifest, fetchBookmarkContent, fetchAllEnrichedBookmarks, EnrichedBookmark } from "../../utils/bookmarkService";
 import type { BookmarkManifest } from "../../types/bookmark";
 
 const MarkdownWrapper = styled.div`
@@ -164,6 +169,8 @@ interface BookmarkState {
   content: string | null;
   contentLoading: LoadingState;
   error: string | null;
+  enrichedData: Map<string, EnrichedBookmark>;
+  enrichedLoading: LoadingState;
 }
 
 const Bookmark: React.FC = () => {
@@ -178,6 +185,8 @@ const Bookmark: React.FC = () => {
     content: null,
     contentLoading: 'idle',
     error: null,
+    enrichedData: new Map(),
+    enrichedLoading: 'idle',
   });
 
   const currentCommand = getCurrentCmdArry(history);
@@ -207,6 +216,30 @@ const Bookmark: React.FC = () => {
         }));
       });
   }, [state.manifestLoading]);
+
+  // Load enriched data (progress + annotations) after manifest is loaded
+  useEffect(() => {
+    if (state.manifestLoading !== 'success' || !state.manifest) return;
+    if (state.enrichedLoading !== 'idle') return;
+
+    setState(prev => ({ ...prev, enrichedLoading: 'loading' }));
+
+    fetchAllEnrichedBookmarks(state.manifest.bookmarks)
+      .then(enrichedData => {
+        setState(prev => ({
+          ...prev,
+          enrichedData,
+          enrichedLoading: 'success',
+        }));
+      })
+      .catch(() => {
+        // Silently fail - enriched data is optional
+        setState(prev => ({
+          ...prev,
+          enrichedLoading: 'error',
+        }));
+      });
+  }, [state.manifestLoading, state.manifest, state.enrichedLoading]);
 
   // Simulate progress animation
   useEffect(() => {
@@ -368,15 +401,40 @@ const Bookmark: React.FC = () => {
       <BookmarkIntro>
         Saved articles from the web. Use &apos;go&apos; to open or &apos;cat&apos; to read.
       </BookmarkIntro>
-      {manifest.bookmarks.map(({ id, title, description, url }) => (
-        <BookmarkContainer key={id}>
-          <BookmarkTitle>{`${id}. ${title}`}</BookmarkTitle>
-          <BookmarkDesc>{description}</BookmarkDesc>
-          <BookmarkUrl href={url} target="_blank" rel="noopener noreferrer">
-            {url}
-          </BookmarkUrl>
-        </BookmarkContainer>
-      ))}
+      {manifest.bookmarks.map(({ id, key, title, description, url }) => {
+        const enriched = state.enrichedData.get(key);
+        const readingProgress = enriched?.progress?.scrollPercentage;
+        const firstAnnotation = enriched?.annotations?.[0];
+        const annotationCount = enriched?.annotations?.length || 0;
+
+        return (
+          <BookmarkContainer key={id}>
+            <BookmarkTitle>{`${id}. ${title}`}</BookmarkTitle>
+            <BookmarkDesc>{description}</BookmarkDesc>
+            <BookmarkUrl href={url} target="_blank" rel="noopener noreferrer">
+              {url}
+            </BookmarkUrl>
+            {firstAnnotation && (
+              <BookmarkAnnotation>
+                {annotationCount > 1
+                  ? `"${firstAnnotation.selectedText}" (+${annotationCount - 1} more)`
+                  : `"${firstAnnotation.selectedText}"`}
+                {firstAnnotation.note && ` — ${firstAnnotation.note}`}
+              </BookmarkAnnotation>
+            )}
+            {readingProgress !== undefined && (
+              <BookmarkProgressContainer>
+                <BookmarkProgressBar>
+                  <BookmarkProgressFill $progress={readingProgress} />
+                </BookmarkProgressBar>
+                <BookmarkProgressText>
+                  {enriched?.progress?.isRead ? 'Finished' : `${Math.round(readingProgress)}% read`}
+                </BookmarkProgressText>
+              </BookmarkProgressContainer>
+            )}
+          </BookmarkContainer>
+        );
+      })}
       <UsageDiv marginY>
         Usage: bookmark go &lt;id&gt; | bookmark cat &lt;id&gt;
         <br />
