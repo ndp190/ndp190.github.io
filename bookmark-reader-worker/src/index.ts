@@ -317,6 +317,38 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
     }
   }
 
+  // DELETE /api/bookmarks/:key - delete bookmark and all associated data
+  if (path.match(/^\/api\/bookmarks\/[^/]+$/) && request.method === 'DELETE') {
+    const key = decodeURIComponent(path.replace('/api/bookmarks/', ''));
+    try {
+      // 1. Update manifest (remove entry)
+      const manifest = await getManifest(env);
+      if (!manifest) {
+        return jsonResponse({ error: 'Manifest not found' }, 404);
+      }
+      manifest.bookmarks = manifest.bookmarks.filter(b => b.key !== key);
+      manifest.updatedAt = new Date().toISOString();
+      await env.BOOKMARK_BUCKET.put('bookmark/manifest.json', JSON.stringify(manifest));
+
+      // 2. Delete bookmark content from R2
+      await env.BOOKMARK_BUCKET.delete(`bookmark/${key}.json`);
+
+      // 3. Delete enriched data from R2 (ignore if not exists)
+      await env.BOOKMARK_BUCKET.delete(`bookmark/enriched/${key}.json`);
+
+      // 4. Delete progress from KV
+      await env.NIKK_BOOKMARK_PROGRESS.delete(key);
+
+      // 5. Delete annotations from KV
+      await env.NIKK_BOOKMARK_ANNOTATION.delete(key);
+
+      return jsonResponse({ success: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return jsonResponse({ error: message }, 500);
+    }
+  }
+
   // POST /api/sync - sync progress and annotations from KV to R2
   if (path === '/api/sync' && request.method === 'POST') {
     try {
@@ -539,12 +571,10 @@ function getListPageHtml(): string {
       border-radius: 8px;
       padding: 1.25rem;
       cursor: pointer;
-      transition: transform 0.2s, box-shadow 0.2s;
+      transition: border-color 0.2s;
       border: 1px solid #504945;
     }
     .bookmark-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 4px 12px rgba(250,189,47,0.2);
       border-color: #fabd2f;
     }
     .bookmark-title {
@@ -587,13 +617,19 @@ function getListPageHtml(): string {
       transition: width 0.3s;
     }
     .progress-text { color: #b8bb26; font-weight: 500; }
+    .bookmark-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 0.5rem;
+    }
     .source-url {
       color: #928374;
       font-size: 0.75rem;
-      margin-top: 0.5rem;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      flex: 1;
     }
     .empty-state {
       text-align: center;
@@ -765,6 +801,22 @@ function getListPageHtml(): string {
     }
     .toggle-fav-btn:hover { color: #fabd2f; }
     .toggle-fav-btn.favourite { color: #fabd2f; }
+    .open-url-btn, .delete-btn {
+      background: none;
+      border: none;
+      width: 24px;
+      height: 24px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      color: #504945;
+      transition: all 0.2s;
+      margin-left: 0.5rem;
+    }
+    .open-url-btn:hover { color: #83a598; }
+    .delete-btn:hover { color: #fb4934; }
   </style>
 </head>
 <body>
@@ -876,7 +928,7 @@ function getListPageHtml(): string {
         const isFavourite = bookmark.progress?.isFavourite || false;
 
         return \`
-          <div class="bookmark-card">
+          <div class="bookmark-card" data-bookmark-key="\${bookmark.key}">
             <div class="bookmark-header">
               <div class="bookmark-title" onclick="window.location.href='/read/\${encodeURIComponent(bookmark.key)}'" style="cursor:pointer;flex:1;">\${escapeHtml(bookmark.title)}</div>
               <button class="toggle-fav-btn \${isFavourite ? 'favourite' : ''}" onclick="event.stopPropagation(); toggleFavourite('\${bookmark.key}')" title="\${isFavourite ? 'Remove from favourites' : 'Add to favourites'}">★</button>
@@ -894,7 +946,22 @@ function getListPageHtml(): string {
               </div>
               <span>Last read: \${lastRead}</span>
             </div>
-            <div class="source-url" onclick="window.location.href='/read/\${encodeURIComponent(bookmark.key)}'" style="cursor:pointer;">\${escapeHtml(bookmark.url)}</div>
+            <div class="bookmark-footer">
+              <div class="source-url" onclick="window.location.href='/read/\${encodeURIComponent(bookmark.key)}'" style="cursor:pointer;">\${escapeHtml(bookmark.url)}</div>
+              <button class="open-url-btn" onclick="event.stopPropagation(); window.open('\${escapeHtml(bookmark.url)}', '_blank')" title="Open original URL">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+                  <polyline points="15 3 21 3 21 9"></polyline>
+                  <line x1="10" y1="14" x2="21" y2="3"></line>
+                </svg>
+              </button>
+              <button class="delete-btn" onclick="event.stopPropagation(); deleteBookmark('\${bookmark.key}')" title="Delete bookmark">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+              </button>
+            </div>
           </div>
         \`;
       }).join('');
@@ -935,6 +1002,33 @@ function getListPageHtml(): string {
         renderBookmarks();
       } catch (error) {
         console.error('Failed to toggle favourite status:', error);
+      }
+    }
+
+    async function deleteBookmark(key) {
+      if (!confirm('Delete this bookmark? This will also remove all annotations and reading progress.')) {
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/bookmarks/' + encodeURIComponent(key), {
+          method: 'DELETE'
+        });
+
+        if (!res.ok) throw new Error('Failed to delete');
+
+        // Remove from local data
+        allBookmarks = allBookmarks.filter(b => b.key !== key);
+
+        // Remove card from DOM
+        const card = document.querySelector('[data-bookmark-key="' + key + '"]');
+        if (card) card.remove();
+
+        // Update counts
+        updateCounts();
+      } catch (e) {
+        alert('Failed to delete bookmark');
+        console.error(e);
       }
     }
 
@@ -1168,6 +1262,10 @@ function getReadingPageHtml(key: string): string {
       background: transparent;
       border-color: #fabd2f;
       color: #fabd2f;
+    }
+    .header-btn.open-url-btn:hover {
+      border-color: #83a598;
+      color: #83a598;
     }
     .progress-bar-header {
       width: 120px;
@@ -1433,6 +1531,13 @@ function getReadingPageHtml(key: string): string {
       <span id="progressText">0%</span>
     </div>
     <div class="header-actions">
+      <button class="header-btn open-url-btn" id="openUrlBtn" title="Open original URL">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+          <polyline points="15 3 21 3 21 9"></polyline>
+          <line x1="10" y1="14" x2="21" y2="3"></line>
+        </svg>
+      </button>
       <button class="header-btn fav-btn" id="favBtn" title="Add to favourites">★</button>
       <button class="header-btn read-btn" id="readBtn" title="Mark as read">✓</button>
     </div>
@@ -1482,6 +1587,7 @@ function getReadingPageHtml(key: string): string {
     let isRead = false;
     let isFavourite = false;
     let rawMarkdown = ''; // Store raw markdown for offset calculation
+    let bookmarkUrl = '';
 
     async function loadContent() {
       const content = document.getElementById('content');
@@ -1498,6 +1604,7 @@ function getReadingPageHtml(key: string): string {
 
         if (bookmark.error) throw new Error(bookmark.error);
 
+        bookmarkUrl = bookmark.url || '';
         annotations = annotationsData.annotations || [];
 
         rawMarkdown = bookmark.firecrawlResponse?.data?.markdown || 'No content available';
@@ -1896,6 +2003,9 @@ function getReadingPageHtml(key: string): string {
       }
     }
 
+    document.getElementById('openUrlBtn').addEventListener('click', () => {
+      if (bookmarkUrl) window.open(bookmarkUrl, '_blank');
+    });
     document.getElementById('readBtn').addEventListener('click', toggleReadStatus);
     document.getElementById('favBtn').addEventListener('click', toggleFavouriteStatus);
 
