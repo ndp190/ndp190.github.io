@@ -1769,6 +1769,19 @@ function getReadingPageHtml(key: string): string {
           method: 'DELETE'
         });
         annotations = annotations.filter(a => a.id !== id);
+
+        // Remove highlight mark from DOM
+        const content = document.getElementById('markdownContent');
+        if (content) {
+          const marks = content.querySelectorAll('[data-annotation-id="' + id + '"]');
+          marks.forEach(mark => {
+            while (mark.firstChild) {
+              mark.parentNode.insertBefore(mark.firstChild, mark);
+            }
+            mark.remove();
+          });
+        }
+
         renderAnnotations();
       } catch (e) {
         console.error('Failed to delete annotation:', e);
