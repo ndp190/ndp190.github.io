@@ -103,3 +103,13 @@ export const ProgressFill = styled.div`
   transition: width 0.2s ease-out;
   animation: ${progressAnimation} 1s ease-in-out infinite;
 `;
+
+export const FavouriteIndicator = styled.div`
+  color: ${({ theme }) => theme.colors?.primary};
+  font-weight: 600;
+  margin-bottom: 1rem;
+  padding: 0.5rem 0.75rem;
+  background: ${({ theme }) => theme.colors?.primary}15;
+  border-radius: 4px;
+  display: inline-block;
+`;
