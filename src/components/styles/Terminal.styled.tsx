@@ -60,7 +60,7 @@ export const KeyboardButton = styled.button`
   height: 3.5rem;
   border-radius: 50%;
   background: ${({ theme }) => theme.colors?.primary || '#fff'};
-  color: ${({ theme }) => theme.colors?.body?.background || '#000'};
+  color: ${({ theme }) => theme.colors?.body || '#000'};
   border: none;
   cursor: pointer;
   display: flex;

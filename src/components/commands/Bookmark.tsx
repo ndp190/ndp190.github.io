@@ -534,7 +534,7 @@ const Bookmark: React.FC = () => {
           </BookmarkContainer>
         );
       })}
-      <UsageDiv marginY>
+      <UsageDiv $marginY>
         Usage: bookmark cat &lt;id&gt; | bookmark go &lt;id&gt;
         <br />
         eg: bookmark cat 1

@@ -15,13 +15,14 @@
     "@types/react-dom": "18.0.10",
     "eslint": "8.32.0",
     "eslint-config-next": "13.1.5",
+    "lodash": "^4.17.21",
     "next": "13.5.1",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "react-markdown": "^10.1.0",
     "rehype-raw": "^7.0.0",
     "remark-gfm": "^4.0.1",
-    "styled-components": "^5.3.6",
+    "styled-components": "^6.1.19",
     "styled-normalize": "^8.0.7"
   },
   "devDependencies": {
@@ -29,10 +30,9 @@
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.1",
     "@testing-library/user-event": "^14.6.1",
-    "@types/lodash": "^4.14.191",
+    "@types/lodash": "^4.17.21",
     "@types/node": "25.0.3",
     "@types/react": "19.2.7",
-    "@types/styled-components": "^5.1.26",
     "jest": "^30.2.0",
     "jest-environment-jsdom": "^30.2.0",
     "typescript": "5.9.3"

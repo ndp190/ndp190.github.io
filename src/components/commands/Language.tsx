@@ -44,7 +44,7 @@ const Language: React.FC = () => {
           </ThemeSpan>
         ))}
       </ThemesWrapper>
-      <UsageDiv marginY>
+      <UsageDiv $marginY>
         Usage: language set &lt;en|vn&gt; <br />
         eg: language set vn
       </UsageDiv>
