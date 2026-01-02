@@ -23,7 +23,7 @@ import {
 } from "../styles/Bookmark.styled";
 import { termContext } from "../Terminal";
 import { UsageDiv } from "../styles/Output.styled";
-import { fetchBookmarkManifest, fetchBookmarkContent, fetchAllEnrichedBookmarks, EnrichedBookmark } from "../../utils/bookmarkService";
+import { fetchBookmarkManifest, fetchBookmarkContent } from "../../utils/bookmarkService";
 import type { BookmarkManifest, Annotation } from "../../types/bookmark";
 
 // Insert annotation highlights with speech bubble notes into markdown (FILO order)
@@ -247,8 +247,6 @@ interface BookmarkState {
   content: string | null;
   contentLoading: LoadingState;
   error: string | null;
-  enrichedData: Map<string, EnrichedBookmark>;
-  enrichedLoading: LoadingState;
 }
 
 const Bookmark: React.FC = () => {
@@ -263,8 +261,6 @@ const Bookmark: React.FC = () => {
     content: null,
     contentLoading: 'idle',
     error: null,
-    enrichedData: new Map(),
-    enrichedLoading: 'idle',
   });
 
   const currentCommand = getCurrentCmdArry(history);
@@ -295,29 +291,6 @@ const Bookmark: React.FC = () => {
       });
   }, [state.manifestLoading]);
 
-  // Load enriched data (progress + annotations) after manifest is loaded
-  useEffect(() => {
-    if (state.manifestLoading !== 'success' || !state.manifest) return;
-    if (state.enrichedLoading !== 'idle') return;
-
-    setState(prev => ({ ...prev, enrichedLoading: 'loading' }));
-
-    fetchAllEnrichedBookmarks(state.manifest.bookmarks)
-      .then(enrichedData => {
-        setState(prev => ({
-          ...prev,
-          enrichedData,
-          enrichedLoading: 'success',
-        }));
-      })
-      .catch(() => {
-        // Silently fail - enriched data is optional
-        setState(prev => ({
-          ...prev,
-          enrichedLoading: 'error',
-        }));
-      });
-  }, [state.manifestLoading, state.manifest, state.enrichedLoading]);
 
   // Simulate progress animation
   useEffect(() => {
@@ -444,11 +417,10 @@ const Bookmark: React.FC = () => {
 
     // Content loaded
     if (state.content) {
-      const enriched = state.enrichedData.get(bookmark.key);
-      const isFavourite = enriched?.progress?.isFavourite;
-      const isRead = enriched?.progress?.isRead;
-      const scrollPercentage = enriched?.progress?.scrollPercentage || 0;
-      const annotations = enriched?.annotations || [];
+      const isFavourite = bookmark.progress?.isFavourite;
+      const isRead = bookmark.progress?.isRead;
+      const scrollPercentage = bookmark.progress?.scrollPercentage || 0;
+      const annotations = bookmark.annotations || [];
 
       // Process markdown with annotations and progress marker
       let processedContent = state.content;
@@ -500,11 +472,11 @@ const Bookmark: React.FC = () => {
       <BookmarkIntro>
         Saved articles from the web. Use &apos;go&apos; to open or &apos;cat&apos; to read.
       </BookmarkIntro>
-      {manifest.bookmarks.map(({ id, key, title, description, url }) => {
-        const enriched = state.enrichedData.get(key);
-        const readingProgress = enriched?.progress?.scrollPercentage;
-        const firstAnnotation = enriched?.annotations?.[0];
-        const annotationCount = enriched?.annotations?.length || 0;
+      {manifest.bookmarks.map((bookmark) => {
+        const { id, title, description, url, progress, annotations } = bookmark;
+        const readingProgress = progress?.scrollPercentage;
+        const firstAnnotation = annotations?.[0];
+        const annotationCount = annotations?.length || 0;
 
         return (
           <BookmarkContainer key={id}>
@@ -527,7 +499,7 @@ const Bookmark: React.FC = () => {
                   <BookmarkProgressFill $progress={readingProgress} />
                 </BookmarkProgressBar>
                 <BookmarkProgressText>
-                  {enriched?.progress?.isRead ? 'Finished' : `${Math.round(readingProgress)}% read`}
+                  {progress?.isRead ? 'Finished' : `${Math.round(readingProgress)}% read`}
                 </BookmarkProgressText>
               </BookmarkProgressContainer>
             )}
