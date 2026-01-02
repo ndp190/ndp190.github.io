@@ -93,7 +93,7 @@ const renderCat = (options: RenderCatOptions = {}) => {
   return render(
     <ThemeProvider theme={defaultTheme}>
       <languageContext.Provider value={languageContextValue}>
-        <homeContext.Provider value={{ allFileNode: fileTree, translations }}>
+        <homeContext.Provider value={{ allFileNode: fileTree, translations, bookmarks: [] }}>
           <termContext.Provider value={termContextValue}>
             <Cat />
           </termContext.Provider>

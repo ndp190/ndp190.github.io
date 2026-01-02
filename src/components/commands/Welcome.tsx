@@ -14,6 +14,7 @@ import {
 import { homeContext } from "@/pages";
 import { termContext } from "../Terminal";
 import { FileNode } from "@/types/files";
+import { BookmarkManifestItem } from "@/types/bookmark";
 
 const puns = [
  "Phuc and behold, a blog full of untold stories told.",
@@ -66,9 +67,10 @@ function formatDateTime(timestamp: number): string {
 }
 
 const Welcome: React.FC = () => {
-  const { allFileNode } = useContext(homeContext);
+  const { allFileNode, bookmarks } = useContext(homeContext);
   const { executeCommand } = useContext(termContext);
   const blogPosts = getBlogPosts(allFileNode);
+  const recentBookmarks = bookmarks.slice(0, 5); // Show last 5 bookmarks
 
   // Use fixed initial pun to prevent hydration mismatch, then randomize on client
   const [pun, setPun] = useState(puns[0]);
@@ -79,6 +81,12 @@ const Welcome: React.FC = () => {
   const handleBlogClick = (filePath: string) => {
     if (executeCommand) {
       executeCommand(`cat ${filePath}`);
+    }
+  };
+
+  const handleBookmarkClick = (bookmarkId: number) => {
+    if (executeCommand) {
+      executeCommand(`bookmark cat ${bookmarkId}`);
     }
   };
 
@@ -124,6 +132,25 @@ const Welcome: React.FC = () => {
                     <span className="file-info">{size}  {date}  </span>
                     <BlogLink onClick={() => handleBlogClick(filePath)}>
                       {post.name}
+                    </BlogLink>
+                  </div>
+                );
+              })}
+            </BlogList>
+            <Seperator>----</Seperator>
+          </>
+        )}
+        {recentBookmarks.length > 0 && (
+          <>
+            <div>Recent bookmarks (<Cmd>bookmark</Cmd>):</div>
+            <BlogList>
+              {recentBookmarks.map((bookmark) => {
+                const idStr = String(bookmark.id).padStart(3, ' ');
+                return (
+                  <div key={bookmark.id}>
+                    <span className="file-info">{idStr}  </span>
+                    <BlogLink onClick={() => handleBookmarkClick(bookmark.id)}>
+                      {bookmark.title.length > 50 ? bookmark.title.slice(0, 50) + '...' : bookmark.title}
                     </BlogLink>
                   </div>
                 );

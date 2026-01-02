@@ -1,23 +1,40 @@
 import Terminal from "@/components/Terminal";
 import { FileNode } from "@/types/files";
+import { BookmarkManifestItem } from "@/types/bookmark";
 import { readDirectory, readTranslations, AllTranslations } from "@/utils/listFiles";
 import { NextPage } from "next";
 import { createContext } from "react";
 import Head from "next/head";
 
+const MANIFEST_URL = 'https://r2.nikkdev.com/bookmark/manifest.json';
+
 interface HomeProps {
   allFileNode: FileNode;
   translations: AllTranslations;
+  bookmarks: BookmarkManifestItem[];
 }
 
 export const getStaticProps = async () => {
   const allFileNode = readDirectory('public/terminal');
   const translations = readTranslations();
 
+  // Fetch bookmark manifest at build time
+  let bookmarks: BookmarkManifestItem[] = [];
+  try {
+    const response = await fetch(MANIFEST_URL);
+    if (response.ok) {
+      const manifest = await response.json();
+      bookmarks = manifest.bookmarks || [];
+    }
+  } catch {
+    // Silently fail - bookmarks are optional
+  }
+
   return {
     props: {
       allFileNode,
       translations,
+      bookmarks,
     },
   };
 };
@@ -29,9 +46,10 @@ export const homeContext = createContext<HomeProps>({
     isDirectory: false,
   },
   translations: {},
+  bookmarks: [],
 });
 
-const Home: NextPage<HomeProps> = ({ allFileNode, translations }) => {
+const Home: NextPage<HomeProps> = ({ allFileNode, translations, bookmarks }) => {
   const baseUrl = 'https://nikkdev.com';
 
   return (
@@ -54,7 +72,7 @@ const Home: NextPage<HomeProps> = ({ allFileNode, translations }) => {
         <meta name="twitter:description" content="Interactive terminal-style portfolio. Type 'help' to get started." />
         <meta name="twitter:image" content={`${baseUrl}/og-default.png`} />
       </Head>
-      <homeContext.Provider value={{ allFileNode, translations }}>
+      <homeContext.Provider value={{ allFileNode, translations, bookmarks }}>
         <Terminal />
       </homeContext.Provider>
     </>

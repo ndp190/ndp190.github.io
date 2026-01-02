@@ -28,7 +28,7 @@ const renderTerminal = (initialCommand = 'welcome') => {
   return render(
     <ThemeProvider theme={defaultTheme}>
       <languageContext.Provider value={{ language: 'en', setLanguage: jest.fn() }}>
-        <homeContext.Provider value={{ allFileNode: mockFileTree }}>
+        <homeContext.Provider value={{ allFileNode: mockFileTree, translations: {}, bookmarks: [] }}>
           <Terminal initialCommand={initialCommand} />
         </homeContext.Provider>
       </languageContext.Provider>

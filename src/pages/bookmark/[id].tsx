@@ -34,7 +34,7 @@ export const getStaticPaths: GetStaticPaths = async () => {
   const manifest = await fetchManifest();
 
   const paths = manifest.bookmarks.map((bookmark: BookmarkManifestItem) => ({
-    params: { slug: String(bookmark.id) }
+    params: { id: String(bookmark.id) }
   }));
 
   return {
@@ -47,7 +47,7 @@ export const getStaticProps: GetStaticProps<BookmarkPageProps> = async ({ params
   const allFileNode = readDirectory('public/terminal');
   const translations = readTranslations();
   const manifest = await fetchManifest();
-  const bookmarkId = parseInt(params?.slug as string, 10);
+  const bookmarkId = parseInt(params?.id as string, 10);
 
   const bookmark = manifest.bookmarks.find((b: BookmarkManifestItem) => b.id === bookmarkId);
 
@@ -96,7 +96,7 @@ const BookmarkPage: NextPage<BookmarkPageProps> = ({ allFileNode, translations, 
         <meta name="twitter:description" content={meta.description} />
         <meta name="twitter:image" content={imageUrl} />
       </Head>
-      <homeContext.Provider value={{ allFileNode, translations }}>
+      <homeContext.Provider value={{ allFileNode, translations, bookmarks: [] }}>
         <Terminal initialCommand={`bookmark cat ${bookmarkId}`} />
       </homeContext.Provider>
     </>

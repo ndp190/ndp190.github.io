@@ -53,6 +53,36 @@ Blog posts are markdown files stored in `public/terminal/blog/`. The `cat` comma
 
 To add a new blog post, create a `.md` file in `public/terminal/blog/`.
 
+## Testing Requirements
+
+**IMPORTANT: Always write tests for code changes.**
+
+### Unit Tests (Jest + React Testing Library)
+- Location: `src/__tests__/`
+- Run: `npm test`
+- Write unit tests for:
+  - New utility functions
+  - Component logic changes
+  - Context/state management changes
+
+### UI/Integration Tests (Playwright)
+- **Always use Playwright to verify UI changes work correctly**
+- For any UI changes (new pages, component updates, styling):
+  1. Start dev server: `npm run dev`
+  2. Use Playwright browser tools to navigate and verify:
+     - `browser_navigate` to visit pages
+     - `browser_snapshot` to inspect page structure
+     - `browser_click` to test interactions
+     - `browser_console_messages` to check for errors
+  3. Verify the feature works as expected before marking complete
+
+### Testing Checklist
+Before completing any task:
+- [ ] Run `npm run build` to verify no TypeScript/build errors
+- [ ] Run `npm test` to ensure existing tests pass
+- [ ] For UI changes: Use Playwright to manually verify the feature works
+- [ ] Write new tests if adding new functionality
+
 ## Deployment
 
 GitHub Actions workflow (`.github/workflows/nextjs.yml`) builds and exports static HTML on push to master, deploying to GitHub Pages.

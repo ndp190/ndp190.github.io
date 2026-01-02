@@ -110,7 +110,7 @@ const BlogPage: NextPage<BlogProps> = ({ allFileNode, translations, slug, meta }
         <meta name="twitter:description" content={meta.description} />
         <meta name="twitter:image" content={imageUrl} />
       </Head>
-      <homeContext.Provider value={{ allFileNode, translations }}>
+      <homeContext.Provider value={{ allFileNode, translations, bookmarks: [] }}>
         <Terminal initialCommand={`cat ${filePath}`} />
       </homeContext.Provider>
     </>
