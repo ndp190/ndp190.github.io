@@ -360,8 +360,8 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
       const syncedAt = new Date().toISOString();
       let syncedCount = 0;
 
-      // Sync each bookmark's progress and annotations to R2
-      await Promise.all(
+      // Fetch all progress and annotations, then update manifest with enriched data
+      const enrichedBookmarks = await Promise.all(
         manifest.bookmarks.map(async (bookmark: BookmarkEntry) => {
           const [progressData, annotationsData] = await Promise.all([
             env.NIKK_BOOKMARK_PROGRESS.get(bookmark.key),
@@ -370,10 +370,12 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
 
           const progress = progressData ? JSON.parse(progressData) as ReadingProgress : null;
           const annotationList = annotationsData ? JSON.parse(annotationsData) as AnnotationList : null;
+          const annotations = annotationList?.annotations || [];
 
+          // Also save individual enriched file for backward compatibility
           const enrichedBookmark = {
             progress,
-            annotations: annotationList?.annotations || [],
+            annotations,
             syncedAt,
           };
 
@@ -383,7 +385,26 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
             { httpMetadata: { contentType: 'application/json' } }
           );
           syncedCount++;
+
+          // Return bookmark with embedded progress and annotations
+          return {
+            ...bookmark,
+            progress,
+            annotations,
+          };
         })
+      );
+
+      // Update manifest with enriched data
+      const enrichedManifest = {
+        bookmarks: enrichedBookmarks,
+        updatedAt: syncedAt,
+      };
+
+      await env.BOOKMARK_BUCKET.put(
+        MANIFEST_KEY,
+        JSON.stringify(enrichedManifest),
+        { httpMetadata: { contentType: 'application/json' } }
       );
 
       return jsonResponse({ success: true, syncedCount, syncedAt });

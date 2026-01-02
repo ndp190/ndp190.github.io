@@ -32,6 +32,9 @@ export interface BookmarkManifestItem {
   title: string;
   description: string;
   url: string;
+  // Added by sync - optional until synced
+  progress?: ReadingProgress | null;
+  annotations?: Annotation[];
 }
 
 export interface BookmarkManifest {
