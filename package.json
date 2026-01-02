@@ -11,12 +11,11 @@
     "test:watch": "jest --watch"
   },
   "dependencies": {
-    "@next/font": "13.1.5",
     "@types/react-dom": "18.0.10",
     "eslint": "8.32.0",
-    "eslint-config-next": "13.1.5",
+    "eslint-config-next": "^15.5.9",
     "lodash": "^4.17.21",
-    "next": "13.5.1",
+    "next": "^15.5.9",
     "react": "18.2.0",
     "react-dom": "18.2.0",
     "react-markdown": "^10.1.0",
