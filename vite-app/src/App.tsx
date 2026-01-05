@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from 'styled-components';
 import GlobalStyle from '@/components/styles/GlobalStyle';
 import { DefaultTheme } from '@/components/styles/Themes.styled';
@@ -7,7 +8,11 @@ import { useLanguage, Language } from '@/hooks/useLanguage';
 import { ThemeContext, LanguageContext, HomeContext, AllTranslations } from '@/contexts';
 import { FileNode } from '@/types/files';
 import { BookmarkManifestItem } from '@/types/bookmark';
-import Terminal from '@/components/Terminal';
+
+// Import pages
+import Home from '@/pages/Home';
+import BlogPost from '@/pages/BlogPost';
+import BookmarkPage from '@/pages/BookmarkPage';
 
 // Import generated data
 import fileTreeData from '@/data/fileTree.json';
@@ -93,7 +98,7 @@ function App() {
   const currentLanguage = languageLoaded ? selectedLanguage : language;
 
   return (
-    <>
+    <BrowserRouter>
       <h1 className="sr-only" aria-label="Terminal Portfolio">
         Terminal Portfolio
       </h1>
@@ -106,12 +111,16 @@ function App() {
               translations: translationsData as AllTranslations,
               bookmarks
             }}>
-              <Terminal />
+              <Routes>
+                <Route path="/" element={<Home />} />
+                <Route path="/blog/:slug" element={<BlogPost />} />
+                <Route path="/bookmark/:id" element={<BookmarkPage />} />
+              </Routes>
             </HomeContext.Provider>
           </LanguageContext.Provider>
         </ThemeContext.Provider>
       </ThemeProvider>
-    </>
+    </BrowserRouter>
   );
 }
 
