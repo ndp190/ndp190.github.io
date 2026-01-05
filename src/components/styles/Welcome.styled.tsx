@@ -43,6 +43,22 @@ export const PreImg = styled.pre`
   }
 `;
 
+export const WeatherSection = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+
+  @media (max-width: 550px) {
+    display: none;
+  }
+`;
+
+export const WeatherInfo = styled.div`
+  margin-top: 0.5rem;
+  text-align: center;
+`;
+
 export const Seperator = styled.div`
   margin-top: 0.75rem;
   margin-bottom: 0.75rem;
@@ -77,6 +93,7 @@ export const BlogLink = styled.span`
 export const BlogList = styled.div`
   margin: 0.5rem 0;
   font-family: monospace;
+  font-size: 1rem;
   white-space: pre;
 
   .file-info {

@@ -32,10 +32,9 @@ type Command = {
 }[];
 
 export const commands: Command = [
-  { cmd: "about", desc: "about me", tab: 8 },
+  { cmd: "about", desc: "about me and this site", tab: 8 },
   { cmd: "bookmark", desc: "view saved articles", tab: 5 },
   { cmd: "cat", desc: "display file contents", tab: 10 },
-  { cmd: "welcome", desc: "display hero section", tab: 6 },
   { cmd: "help", desc: "check available commands", tab: 9 },
   { cmd: "themes", desc: "check available themes", tab: 7 },
   { cmd: "language", desc: "switch language (en/vn)", tab: 5 },
@@ -69,7 +68,7 @@ interface TerminalProps {
   initialCommand?: string;
 }
 
-const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
+const Terminal: React.FC<TerminalProps> = ({ initialCommand = "about" }) => {
   const containerRef = useRef(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -148,20 +147,42 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
     setPointer(-1);
   };
 
+  // Track mouse position to detect text selection (drag)
+  const mouseDownPos = useRef<{ x: number; y: number } | null>(null);
+
+  const handleMouseDown = useCallback((e: MouseEvent) => {
+    mouseDownPos.current = { x: e.clientX, y: e.clientY };
+  }, []);
+
   // focus on input when terminal is clicked (only on desktop or when input is in view on mobile)
-  const handleDivClick = useCallback(() => {
+  const handleMouseUp = useCallback((e: MouseEvent) => {
     if (!inputRef.current) return;
+
+    // Don't focus if user has selected text
+    const selection = window.getSelection();
+    if (selection && selection.toString().length > 0) return;
+
+    // Don't focus if user dragged (was selecting)
+    if (mouseDownPos.current) {
+      const dx = Math.abs(e.clientX - mouseDownPos.current.x);
+      const dy = Math.abs(e.clientY - mouseDownPos.current.y);
+      if (dx > 5 || dy > 5) return; // Dragged more than 5px
+    }
+
     // On mobile, only focus if the form is in viewport
     if (isMobile && !isFormInViewport()) return;
+
     inputRef.current.focus({ preventScroll: true });
   }, [isMobile, isFormInViewport]);
 
   useEffect(() => {
-    document.addEventListener("click", handleDivClick);
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("mouseup", handleMouseUp);
     return () => {
-      document.removeEventListener("click", handleDivClick);
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [handleDivClick]);
+  }, [handleMouseDown, handleMouseUp]);
 
   // Handle keyboard button click - focus input and scroll to it
   const handleKeyboardButtonClick = (e: React.MouseEvent) => {
@@ -311,6 +332,9 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
     const timer = setTimeout(() => {
       // On mobile, don't auto-focus unless already focused
       if (isMobile && !isInputFocused) return;
+      // Don't steal focus if user has selected text
+      const selection = window.getSelection();
+      if (selection && selection.toString().length > 0) return;
       inputRef?.current?.focus({ preventScroll: true });
     }, 1);
     return () => clearTimeout(timer);

@@ -1,15 +1,39 @@
+import { useContext, useState, useEffect } from "react";
 import {
-  AboutWrapper,
-  HighlightAlt,
-  HighlightSpan,
-} from "../styles/About.styled";
+  BlogLink,
+  BlogList,
+  Cmd,
+  HeroContainer,
+  Link,
+  PreImg,
+  PreName,
+  PreNameMobile,
+  PreWrapper,
+  Seperator,
+  WeatherSection,
+  WeatherInfo,
+} from "../styles/Welcome.styled";
+import { useHomeContext } from "@/contexts";
+import { termContext } from "../Terminal";
+import { FileNode } from "@/types/files";
+import { fetchWeather, getWeatherType, WeatherData } from "@/utils/weatherService";
+import { getWeatherAsciiArt, loadingArt } from "@/utils/weatherAsciiArt";
+import { GitHubIcon, LinkedInIcon, TwitterIcon, EmailIcon } from "@/components/icons/SocialIcons";
+
+const puns = [
+  "Phuc and behold, a blog full of untold stories told.",
+  "Phuc is the name, sharing my thoughts and musings is the game.",
+  "Phuc your way through my blog, filled with fun facts and a unique spin.",
+  "Phuc'n'Stuff, where my thoughts and ideas are enough.",
+  "Phuc-tastic, sharing my journey through this blog fantastic.",
+  "Phuc'ed up your day, with my blog in every way.",
+  "Phuc-ing awesome, sharing my life with you, with this blog so positively gnarly dude.",
+  "Phuc, Phuc, and away, read my blog for a bright new day.",
+  "Phuc-ing amazing, this blog overflowing with creative brainstorming.",
+  "Phuc'ed with words, sharing my life through this blog, with so many tales to be heard."
+];
 
 const projects = [
-  {
-    title: "Nikk's Blog",
-    desc: "My techy yapping.",
-    url: "https://nikkdev.com/",
-  },
   {
     title: "Nguyen talk - podcast landing page",
     desc: "A landing page for a podcast series featuring career discussions and interviews.",
@@ -22,32 +46,176 @@ const projects = [
   },
 ];
 
+// Get blog posts from file tree
+function getBlogPosts(node: FileNode): FileNode[] {
+  if (node.name === 'blog' && node.isDirectory && node.children) {
+    return node.children.filter(child => !child.isDirectory && child.name.endsWith('.md'));
+  }
+  if (node.children) {
+    for (const child of node.children) {
+      const posts = getBlogPosts(child);
+      if (posts.length > 0) return posts;
+    }
+  }
+  return [];
+}
+
+function formatFileSize(size: number): string {
+  const units = ["B", "K", "M", "G", "T"];
+  let index = 0;
+  while (size >= 1024 && index < units.length - 1) {
+    size /= 1024;
+    index++;
+  }
+  if (index === 0) {
+    return `${size.toString().padStart(4, ' ')}`;
+  }
+  return `${size.toFixed(1).padStart(4, ' ')}${units[index]}`;
+}
+
+function formatDateTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = months[date.getMonth()];
+  const day = date.getDate().toString().padStart(2, '0');
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${month} ${day} ${hours}:${minutes}`;
+}
+
 const About: React.FC = () => {
+  const { allFileNode, bookmarks } = useHomeContext();
+  const { executeCommand } = useContext(termContext);
+  const blogPosts = getBlogPosts(allFileNode);
+  const recentBookmarks = bookmarks.slice(0, 5); // Show last 5 bookmarks
+
+  // Use fixed initial pun to prevent hydration mismatch, then randomize on client
+  const [pun, setPun] = useState(puns[0]);
+  const [weather, setWeather] = useState<WeatherData | null>(null);
+
+  useEffect(() => {
+    setPun(puns[Math.floor(Math.random() * puns.length)]);
+
+    // Fetch weather for Bien Hoa, Vietnam
+    fetchWeather().then(setWeather);
+  }, []);
+
+  const handleBlogClick = (filePath: string) => {
+    if (executeCommand) {
+      executeCommand(`cat ${filePath}`);
+    }
+  };
+
+  const handleBookmarkClick = (bookmarkId: number) => {
+    if (executeCommand) {
+      executeCommand(`bookmark cat ${bookmarkId}`);
+    }
+  };
+
   return (
-    <AboutWrapper data-testid="about">
-      <p>
-        Hello, I'm <HighlightSpan>Nikk</HighlightSpan>, but you can call me <HighlightSpan>Phuc</HighlightSpan> if you're feeling fancy!
-      </p>
-      <p>
-        I'm <HighlightAlt>a developer</HighlightAlt> with a passion for solving problems and discovering new things. I've been working with <a href="https://www.go1.com" target="_blank">Go1</a> for some time now and am proud of the skills I've acquired. You can reach out to me at:
-      </p>
-      <ul>
-        <li>Github <a href="https://github.com/ndp190" target="_blank">https://github.com/ndp190</a></li>
-        <li>LinkedIn <a href="https://www.linkedin.com/in/ndp190" target="_blank">https://www.linkedin.com/in/ndp190</a></li>
-        <li>Twitter <a href="https://twitter.com/ndp190" target="_blank">https://twitter.com/ndp190</a></li>
-        <li>Email <a href="mailto:ndp190@gmail.com">ndp190@gmail.com</a></li>
-      </ul>
-      <p>
-        Here are some of my projects you shouldn't miss:
-      </p>
-      <ul>
-        {projects.map(({ title, desc, url }) => (
-          <li key={title}>
-            <a href={url} target="_blank">{title}</a> - {desc}
-          </li>
-        ))}
-      </ul>
-    </AboutWrapper>
+    <HeroContainer data-testid="about">
+      <div className="info-section">
+        <PreName>
+          {`
+ ____ ____ ____ ____
+||N |||i |||k |||k ||
+||  |||  |||  |||  ||
+|| P||| h||| u||| c||
+||__|||__|||__|||__||
+|/__\\|/__\\|/__\\|/__\\|
+
+          `}
+        </PreName>
+        <PreWrapper>
+          <PreNameMobile>
+            {`
+ ____ ____ ____ ____
+||N |||i |||k |||k ||
+||  |||  |||  |||  ||
+|| P||| h||| u||| c||
+||__|||__|||__|||__||
+|/__\\|/__\\|/__\\|/__\\|
+
+          `}
+          </PreNameMobile>
+        </PreWrapper>
+        <div>{pun}</div>
+        <Seperator>----</Seperator>
+        {blogPosts.length > 0 && (
+          <>
+            <div>+ Recent blog posts (<Cmd>ls -l blog</Cmd>):</div>
+            <BlogList>
+              {blogPosts.map((post) => {
+                const filePath = post.path.replace(/^terminal\//, '');
+                const size = formatFileSize(post.size || 0);
+                const date = formatDateTime(post.timestamp || Date.now());
+                return (
+                  <div key={post.name}>
+                    <span className="file-info">{size}  {date}  </span>
+                    <BlogLink onClick={() => handleBlogClick(filePath)}>
+                      {post.name}
+                    </BlogLink>
+                  </div>
+                );
+              })}
+            </BlogList>
+            <Seperator></Seperator>
+          </>
+        )}
+        {recentBookmarks.length > 0 && (
+          <>
+            <div>+ Recent bookmarks (<Cmd>bookmark</Cmd>):</div>
+            <BlogList>
+              {recentBookmarks.map((bookmark) => {
+                const idStr = String(bookmark.id).padStart(3, ' ');
+                return (
+                  <div key={bookmark.id}>
+                    <span className="file-info">{idStr}  </span>
+                    <BlogLink onClick={() => handleBookmarkClick(bookmark.id)}>
+                      {bookmark.title.length > 50 ? bookmark.title.slice(0, 50) + '...' : bookmark.title}
+                    </BlogLink>
+                  </div>
+                );
+              })}
+            </BlogList>
+            <Seperator>----</Seperator>
+          </>
+        )}
+        <div>
+          <div>Projects:</div>
+          {projects.map(({ title, desc, url }) => (
+            <div key={title}>
+              - <Link href={url}>{title}</Link>: {desc}
+            </div>
+          ))}
+        <div>
+          Reach me at:{" "}
+          <Link href="https://github.com/ndp190"><GitHubIcon />GitHub</Link>{" | "}
+          <Link href="https://www.linkedin.com/in/ndp190"><LinkedInIcon />LinkedIn</Link>{" | "}
+          <Link href="https://twitter.com/ndp190"><TwitterIcon />Twitter</Link>{" | "}
+          <Link href="mailto:ndp190@gmail.com"><EmailIcon />Email</Link>
+        </div>
+        </div>
+        <Seperator>----</Seperator>
+        <div>
+          For a list of available commands, type `<Cmd>help</Cmd>`.
+        </div>
+      </div>
+      <WeatherSection className="illu-section" data-testid="weather-section">
+        <PreImg>
+          {weather
+            ? getWeatherAsciiArt(getWeatherType(weather.weatherCode), weather.isDay)
+            : loadingArt}
+        </PreImg>
+        {weather && (
+          <WeatherInfo data-testid="weather-info">
+            <div>Bien Hoa, Vietnam</div>
+            <div>{weather.temperature}°C - {weather.description}</div>
+            <div>{weather.isDay ? 'Day' : 'Night'}</div>
+          </WeatherInfo>
+        )}
+      </WeatherSection>
+    </HeroContainer>
   );
 };
 

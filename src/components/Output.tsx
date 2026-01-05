@@ -10,7 +10,6 @@ import Language from "./commands/Language";
 import Ls from "./commands/Ls";
 import Themes from "./commands/Themes";
 import Tree from "./commands/Tree";
-import Welcome from "./commands/Welcome";
 import { OutputContainer, UsageDiv } from "./styles/Output.styled";
 import { termContext } from "./Terminal";
 import { useContext } from "react";
@@ -47,7 +46,6 @@ const Output: React.FC<Props> = ({ index, cmd }) => {
           pwd: <GeneralOutput>/home/nikk</GeneralOutput>,
           socials: <GeneralOutput>Socials command - coming soon</GeneralOutput>,
           themes: <Themes />,
-          welcome: <Welcome />,
           whoami: <GeneralOutput>visitor</GeneralOutput>,
           ls: <Ls />,
           tree: <Tree />,

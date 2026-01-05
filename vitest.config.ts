@@ -8,7 +8,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     globals: true,
-    exclude: ['**/node_modules/**', '**/bookmark-reader-worker/**'],
+    exclude: ['**/node_modules/**', '**/bookmark-reader-worker/**', '**/e2e/**'],
   },
   resolve: {
     alias: {

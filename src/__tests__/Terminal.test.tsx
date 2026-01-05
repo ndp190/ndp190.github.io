@@ -24,7 +24,7 @@ const mockFileTree: FileNode = {
   children: [],
 };
 
-const renderTerminal = (initialCommand = 'welcome') => {
+const renderTerminal = (initialCommand = 'about') => {
   return render(
     <ThemeProvider theme={defaultTheme}>
       <LanguageContext.Provider value={{ language: 'en', setLanguage: vi.fn() }}>
@@ -59,11 +59,12 @@ describe('Terminal component', () => {
       expect(screen.getByTitle('terminal-input')).toBeInTheDocument();
     });
 
-    it('focuses input with preventScroll on document click', () => {
+    it('focuses input with preventScroll on document mouseup', () => {
       renderTerminal();
 
-      // Simulate document click
-      fireEvent.click(document.body);
+      // Simulate mousedown + mouseup (simple click without drag)
+      fireEvent.mouseDown(document.body, { clientX: 100, clientY: 100 });
+      fireEvent.mouseUp(document.body, { clientX: 100, clientY: 100 });
 
       // Check that focus was called with preventScroll: true
       expect(mockFocus).toHaveBeenCalledWith({ preventScroll: true });
@@ -93,8 +94,9 @@ describe('Terminal component', () => {
 
       const wrapper = screen.getByTestId('terminal-wrapper');
 
-      // Click on the terminal wrapper
-      fireEvent.click(wrapper);
+      // Simulate mousedown + mouseup (simple click without drag)
+      fireEvent.mouseDown(wrapper, { clientX: 100, clientY: 100 });
+      fireEvent.mouseUp(wrapper, { clientX: 100, clientY: 100 });
 
       // Verify focus was called with preventScroll
       expect(mockFocus).toHaveBeenCalledWith({ preventScroll: true });
@@ -103,8 +105,8 @@ describe('Terminal component', () => {
 
   describe('command execution', () => {
     it('executes initial command', () => {
-      renderTerminal('welcome');
-      expect(screen.getByTestId('input-command')).toHaveTextContent('welcome');
+      renderTerminal('about');
+      expect(screen.getByTestId('input-command')).toHaveTextContent('about');
     });
 
     it('shows command not found for invalid commands', () => {
