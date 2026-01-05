@@ -1,4 +1,10 @@
+import Clear from "./commands/Clear";
+import Echo from "./commands/Echo";
 import GeneralOutput from "./commands/GeneralOutput";
+import Help from "./commands/Help";
+import History from "./commands/History";
+import Language from "./commands/Language";
+import Themes from "./commands/Themes";
 import { OutputContainer, UsageDiv } from "./styles/Output.styled";
 import { termContext } from "./Terminal";
 import { useContext } from "react";
@@ -29,17 +35,17 @@ const Output: React.FC<Props> = ({ index, cmd }) => {
           about: <Placeholder name="About" />,
           bookmark: <Placeholder name="Bookmark" />,
           cat: <Placeholder name="Cat" />,
-          clear: <Placeholder name="Clear" />,
-          echo: <Placeholder name="Echo" />,
+          clear: <Clear />,
+          echo: <Echo />,
           education: <Placeholder name="Education" />,
           email: <Placeholder name="Email" />,
           gui: <Placeholder name="Gui" />,
-          help: <Placeholder name="Help" />,
-          history: <Placeholder name="History" />,
-          language: <Placeholder name="Language" />,
+          help: <Help />,
+          history: <History />,
+          language: <Language />,
           pwd: <GeneralOutput>/home/nikk</GeneralOutput>,
           socials: <Placeholder name="Socials" />,
-          themes: <Placeholder name="Themes" />,
+          themes: <Themes />,
           welcome: <Placeholder name="Welcome" />,
           whoami: <GeneralOutput>visitor</GeneralOutput>,
           ls: <Placeholder name="Ls" />,
