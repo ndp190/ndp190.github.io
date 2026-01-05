@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Local env files
+.env
+.env.local
+.env.*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Generated data (re-generated at build time)
+src/data/*.json
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
