@@ -47,3 +47,4 @@ out
 .claude/settings.local.json
 
 tsconfig.tsbuildinfo
+.playwright-mcp

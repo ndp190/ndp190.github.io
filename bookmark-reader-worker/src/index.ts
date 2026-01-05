@@ -116,8 +116,10 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
         return jsonResponse({ error: 'Invalid URL format' }, 400);
       }
 
-      // Scrape the URL
-      const firecrawlResult = await scrapeWithFirecrawl(body.url, env.FIRECRAWL_API_KEY);
+      // Scrape the URL (with PDF parser if URL points to a PDF)
+      const firecrawlResult = await scrapeWithFirecrawl(body.url, env.FIRECRAWL_API_KEY, {
+        isPdf: isPdfUrl(body.url),
+      });
       if (!firecrawlResult.success) {
         return jsonResponse({ error: firecrawlResult.error || 'Scraping failed' }, 500);
       }
@@ -484,17 +486,28 @@ async function getManifest(env: Env): Promise<BookmarkManifest | null> {
   return object.json() as Promise<BookmarkManifest>;
 }
 
-async function scrapeWithFirecrawl(url: string, apiKey: string): Promise<FirecrawlResponse> {
+interface ScrapeOptions {
+  isPdf?: boolean;
+}
+
+async function scrapeWithFirecrawl(url: string, apiKey: string, options: ScrapeOptions = {}): Promise<FirecrawlResponse> {
+  const requestBody: Record<string, unknown> = {
+    url,
+    formats: ['markdown'],
+  };
+
+  // Add PDF parser when URL points to a PDF file
+  if (options.isPdf) {
+    requestBody.parsers = ['pdf'];
+  }
+
   const response = await fetch(FIRECRAWL_API_URL, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      url,
-      formats: ['markdown'],
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
@@ -518,6 +531,16 @@ function isValidUrl(urlString: string): boolean {
   try {
     const url = new URL(urlString);
     return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function isPdfUrl(urlString: string): boolean {
+  try {
+    const url = new URL(urlString);
+    // Check if pathname ends with .pdf (case-insensitive)
+    return url.pathname.toLowerCase().endsWith('.pdf');
   } catch {
     return false;
   }
