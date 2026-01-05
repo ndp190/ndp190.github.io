@@ -3,8 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import styled from "styled-components";
 import { termContext } from "../Terminal";
-import { homeContext } from "@/pages";
-import { languageContext } from "@/pages/_app";
+import { useHomeContext, useLanguageContext } from "@/contexts";
 import { findFileByPath } from "@/utils/fileUtils";
 import { UsageDiv } from "../styles/Output.styled";
 
@@ -153,8 +152,8 @@ const ErrorMessage = styled.div`
 
 const Cat: React.FC = () => {
   const { arg, index } = useContext(termContext);
-  const { allFileNode, translations } = useContext(homeContext);
-  const { language } = useContext(languageContext);
+  const { allFileNode, translations } = useHomeContext();
+  const { language } = useLanguageContext();
   const contentRef = useRef<HTMLDivElement>(null);
   const hasScrolled = useRef(false);
 

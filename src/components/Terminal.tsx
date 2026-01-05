@@ -1,7 +1,6 @@
 import React, {
   createContext,
   useCallback,
-  useContext,
   useEffect,
   useRef,
   useState,
@@ -21,7 +20,7 @@ import {
   Wrapper,
 } from "./styles/Terminal.styled";
 import { argTab } from "../utils/funcs";
-import { homeContext } from "@/pages";
+import { useHomeContext } from "@/contexts";
 import { getMatchingPaths } from "@/utils/fileUtils";
 import { fetchBookmarkManifest } from "@/utils/bookmarkService";
 import type { BookmarkManifest } from "@/types/bookmark";
@@ -42,15 +41,10 @@ export const commands: Command = [
   { cmd: "language", desc: "switch language (en/vn)", tab: 5 },
   { cmd: "clear", desc: "clear the terminal", tab: 8 },
   { cmd: "echo", desc: "print out anything", tab: 9 },
-  // { cmd: "education", desc: "my education background", tab: 4 },
-  // { cmd: "email", desc: "send an email to me", tab: 8 },
-  // { cmd: "gui", desc: "go to my portfolio in GUI", tab: 10 },
   { cmd: "history", desc: "view command history", tab: 6 },
   { cmd: "pwd", desc: "print current working directory", tab: 10 },
   { cmd: "ls", desc: "list directory contents (-l for details)", tab: 11 },
   { cmd: "tree", desc: "list contents of directories in a tree-like format", tab: 9 },
-  // { cmd: "socials", desc: "check out my social accounts", tab: 6 },
-  // { cmd: "whoami", desc: "about current user", tab: 7 },
 ];
 
 interface Term {
@@ -60,7 +54,7 @@ interface Term {
   index: number;
   clearHistory?: () => void;
   executeCommand?: (cmd: string) => void;
-};
+}
 
 
 export const termContext = createContext<Term>({
@@ -79,7 +73,7 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
   const containerRef = useRef(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
-  const { allFileNode } = useContext(homeContext);
+  const { allFileNode } = useHomeContext();
 
   const [inputVal, setInputVal] = useState("");
   const [cmdHistory, setCmdHistory] = useState<string[]>([initialCommand]);
@@ -129,7 +123,7 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
       setRerender(false);
       setInputVal(e.target.value);
     },
-    [inputVal]
+    []
   );
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {

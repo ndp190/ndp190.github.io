@@ -1,20 +1,20 @@
 import React from 'react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ThemeProvider } from 'styled-components';
-import theme from '../components/styles/themes';
+import themes from '../components/styles/themes';
 import Terminal from '../components/Terminal';
-import { homeContext } from '../pages';
-import { languageContext } from '../pages/_app';
+import { LanguageContext, HomeContext, AllTranslations } from '../contexts';
 import { FileNode } from '../types/files';
 
-const defaultTheme = theme.dark;
+const defaultTheme = themes.dark;
 
 // Mock scrollIntoView
-const mockScrollIntoView = jest.fn();
+const mockScrollIntoView = vi.fn();
 Element.prototype.scrollIntoView = mockScrollIntoView;
 
 // Mock focus to track preventScroll option
-const mockFocus = jest.fn();
+const mockFocus = vi.fn();
 
 // Sample file tree for testing
 const mockFileTree: FileNode = {
@@ -27,18 +27,18 @@ const mockFileTree: FileNode = {
 const renderTerminal = (initialCommand = 'welcome') => {
   return render(
     <ThemeProvider theme={defaultTheme}>
-      <languageContext.Provider value={{ language: 'en', setLanguage: jest.fn() }}>
-        <homeContext.Provider value={{ allFileNode: mockFileTree, translations: {}, bookmarks: [] }}>
+      <LanguageContext.Provider value={{ language: 'en', setLanguage: vi.fn() }}>
+        <HomeContext.Provider value={{ allFileNode: mockFileTree, translations: {} as AllTranslations, bookmarks: [] }}>
           <Terminal initialCommand={initialCommand} />
-        </homeContext.Provider>
-      </languageContext.Provider>
+        </HomeContext.Provider>
+      </LanguageContext.Provider>
     </ThemeProvider>
   );
 };
 
 describe('Terminal component', () => {
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     // Override focus on HTMLInputElement prototype
     HTMLInputElement.prototype.focus = mockFocus;
   });

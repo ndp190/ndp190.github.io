@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest';
 import { findFileByPath, getAllFilePaths, getMatchingPaths } from '../utils/fileUtils';
 import { FileNode } from '../types/files';
 

@@ -1,6 +1,6 @@
-import { homeContext } from "@/pages";
+import { useHomeContext } from "@/contexts";
 import { FileNode } from "@/types/files";
-import React, { useContext } from "react";
+import React from "react";
 import { Wrapper } from "../styles/Output.styled";
 
 function renderNodeTree(node: FileNode, isLastList: boolean[] = []): string {
@@ -24,8 +24,8 @@ function renderNodeTree(node: FileNode, isLastList: boolean[] = []): string {
   return output;
 }
 
-const Tree = () => {
-  const { allFileNode } = useContext(homeContext);
+const Tree: React.FC = () => {
+  const { allFileNode } = useHomeContext();
   return (
     <Wrapper>
       <pre>{renderNodeTree(allFileNode)}</pre>
@@ -34,4 +34,3 @@ const Tree = () => {
 };
 
 export default Tree;
-

@@ -1,12 +1,13 @@
 import React from 'react';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ThemeProvider } from 'styled-components';
-import theme from '../components/styles/themes';
+import themes from '../components/styles/themes';
 import Help from '../components/commands/Help';
 import GeneralOutput from '../components/commands/GeneralOutput';
 import { termContext } from '../components/Terminal';
 
-const defaultTheme = theme.dark;
+const defaultTheme = themes.dark;
 
 const renderWithTheme = (component: React.ReactNode) => {
   return render(
@@ -22,7 +23,7 @@ const renderWithContext = (component: React.ReactNode, contextValue = {}) => {
     history: [],
     rerender: false,
     index: 0,
-    clearHistory: jest.fn(),
+    clearHistory: vi.fn(),
   };
 
   return render(

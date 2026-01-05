@@ -2,8 +2,8 @@ import { useContext, useEffect } from "react";
 import { Wrapper, UsageDiv } from "../styles/Output.styled";
 import { ThemeSpan, ThemesWrapper } from "../styles/Themes.styled";
 import { termContext } from "../Terminal";
-import { languageContext } from "@/pages/_app";
-import { Language as LanguageType } from "@/utils/useLanguage";
+import { useLanguageContext } from "@/contexts";
+import { Language as LanguageType } from "@/hooks/useLanguage";
 
 const languages: LanguageType[] = ["en", "vn"];
 
@@ -14,7 +14,7 @@ const languageLabels: Record<LanguageType, string> = {
 
 const Language: React.FC = () => {
   const { arg, rerender, index } = useContext(termContext);
-  const { language, setLanguage } = useContext(languageContext);
+  const { language, setLanguage } = useLanguageContext();
 
   // Only set language for the most recent command (index 0) to avoid race conditions
   // where older commands in history also have rerender=true and would override the new setting

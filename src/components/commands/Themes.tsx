@@ -1,6 +1,5 @@
 import { useContext, useEffect } from "react";
 import _ from "lodash";
-// import { themeContext } from "../../App";
 import { Wrapper } from "../styles/Output.styled";
 import { ThemeSpan, ThemesWrapper } from "../styles/Themes.styled";
 import {
@@ -11,14 +10,14 @@ import {
 import { termContext } from "../Terminal";
 import theme from "../styles/themes";
 import Usage from "../Usage";
-import { themeContext } from "@/pages/_app";
+import { useThemeContext } from "@/contexts";
 
 const myThemes = _.keys(theme);
 
 const Themes: React.FC = () => {
   const { arg, history, rerender } = useContext(termContext);
 
-  const themeSwitcher = useContext(themeContext);
+  const themeSwitcher = useThemeContext();
 
   /* ===== get current command ===== */
   const currentCommand = getCurrentCmdArry(history);
@@ -28,7 +27,7 @@ const Themes: React.FC = () => {
     if (checkThemeSwitch(rerender, currentCommand, myThemes)) {
       themeSwitcher?.(theme[currentCommand[2]]);
     }
-  }, [arg, rerender, currentCommand]);
+  }, [arg, rerender, currentCommand, themeSwitcher]);
 
   /* ===== check arg is valid ===== */
   const checkArg = () =>
