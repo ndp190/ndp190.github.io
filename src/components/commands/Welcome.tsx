@@ -11,10 +11,9 @@ import {
   PreWrapper,
   Seperator,
 } from "../styles/Welcome.styled";
-import { homeContext } from "@/pages";
+import { useHomeContext } from "@/contexts";
 import { termContext } from "../Terminal";
 import { FileNode } from "@/types/files";
-import { BookmarkManifestItem } from "@/types/bookmark";
 
 const puns = [
  "Phuc and behold, a blog full of untold stories told.",
@@ -67,7 +66,7 @@ function formatDateTime(timestamp: number): string {
 }
 
 const Welcome: React.FC = () => {
-  const { allFileNode, bookmarks } = useContext(homeContext);
+  const { allFileNode, bookmarks } = useHomeContext();
   const { executeCommand } = useContext(termContext);
   const blogPosts = getBlogPosts(allFileNode);
   const recentBookmarks = bookmarks.slice(0, 5); // Show last 5 bookmarks

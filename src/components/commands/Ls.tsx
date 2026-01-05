@@ -1,4 +1,4 @@
-import { homeContext } from "@/pages";
+import { useHomeContext } from "@/contexts";
 import { FileNode } from "@/types/files";
 import React, { useContext } from "react";
 import { Wrapper } from "../styles/Output.styled";
@@ -63,7 +63,7 @@ interface LsProps {
 
 const Ls: React.FC<LsProps> = ({ overrideArgs }) => {
   const { arg } = useContext(termContext);
-  const { allFileNode } = useContext(homeContext);
+  const { allFileNode } = useHomeContext();
 
   const args = overrideArgs || arg;
 

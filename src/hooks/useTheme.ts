@@ -1,7 +1,7 @@
 import { DefaultTheme } from "@/components/styles/Themes.styled";
 import { useEffect, useState } from "react";
 import themes from "../components/styles/themes";
-import { getFromLS, setToLS } from "./storage";
+import { getFromLS, setToLS } from "../utils/storage";
 
 export const useTheme = () => {
   const [theme, setTheme] = useState<DefaultTheme>(themes.dark);

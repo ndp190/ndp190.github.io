@@ -23,7 +23,7 @@ export function findFileByPath(node: FileNode, targetPath: string): FileNode | n
 /**
  * Get all file paths from the file tree (relative to terminal/)
  */
-export function getAllFilePaths(node: FileNode, prefix: string = ''): string[] {
+export function getAllFilePaths(node: FileNode, _prefix: string = ''): string[] {
   const paths: string[] = [];
 
   // Skip the root 'terminal' node in the path

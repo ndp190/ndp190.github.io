@@ -57,7 +57,7 @@ function insertReadingProgressMarker(markdown: string, scrollPercentage: number)
   const lineBreak = markdown.indexOf('\n', position);
   const insertAt = lineBreak !== -1 ? lineBreak : position;
 
-  return markdown.slice(0, insertAt) + '\n\n<div class="reading-progress-marker">👀 Nikk is currently reading here</div>\n' + markdown.slice(insertAt);
+  return markdown.slice(0, insertAt) + '\n\n<div class="reading-progress-marker">Nikk is currently reading here</div>\n' + markdown.slice(insertAt);
 }
 
 const MarkdownWrapper = styled.div`
@@ -432,7 +432,7 @@ const Bookmark: React.FC = () => {
       return (
         <MarkdownWrapper ref={contentRef}>
           {isFavourite && (
-            <FavouriteIndicator>★ Nikk liked this article</FavouriteIndicator>
+            <FavouriteIndicator>* Nikk liked this article</FavouriteIndicator>
           )}
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
@@ -470,7 +470,7 @@ const Bookmark: React.FC = () => {
   return (
     <div data-testid="bookmark">
       <BookmarkIntro>
-        Saved articles from the web. Use &apos;go&apos; to open or &apos;cat&apos; to read.
+        Saved articles from the web. Use 'go' to open or 'cat' to read.
       </BookmarkIntro>
       {manifest.bookmarks.map((bookmark) => {
         const { id, title, description, url, progress, annotations } = bookmark;
@@ -490,7 +490,7 @@ const Bookmark: React.FC = () => {
                 {annotationCount > 1
                   ? `"${firstAnnotation.selectedText}" (+${annotationCount - 1} more)`
                   : `"${firstAnnotation.selectedText}"`}
-                {firstAnnotation.note && ` — ${firstAnnotation.note}`}
+                {firstAnnotation.note && ` - ${firstAnnotation.note}`}
               </BookmarkAnnotation>
             )}
             {readingProgress !== undefined && (

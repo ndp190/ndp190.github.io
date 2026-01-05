@@ -3,21 +3,17 @@ import Bookmark from "./commands/Bookmark";
 import Cat from "./commands/Cat";
 import Clear from "./commands/Clear";
 import Echo from "./commands/Echo";
-import Education from "./commands/Education";
-import Email from "./commands/Email";
 import GeneralOutput from "./commands/GeneralOutput";
-import Gui from "./commands/Gui";
 import Help from "./commands/Help";
-import Welcome from "./commands/Welcome";
 import History from "./commands/History";
 import Language from "./commands/Language";
-import Socials from "./commands/Socials";
+import Ls from "./commands/Ls";
 import Themes from "./commands/Themes";
+import Tree from "./commands/Tree";
+import Welcome from "./commands/Welcome";
 import { OutputContainer, UsageDiv } from "./styles/Output.styled";
 import { termContext } from "./Terminal";
 import { useContext } from "react";
-import Ls from "./commands/Ls";
-import Tree from "./commands/Tree";
 
 type Props = {
   index: number;
@@ -30,7 +26,6 @@ const Output: React.FC<Props> = ({ index, cmd }) => {
   const specialCmds = ["bookmark", "socials", "themes", "language", "echo", "cat", "ls"];
 
   // return 'Usage: <cmd>' if command arg is not valid
-  // eg: about tt
   if (!specialCmds.includes(cmd) && arg.length > 0)
     return <UsageDiv data-testid="usage-output">Usage: {cmd}</UsageDiv>;
 
@@ -43,14 +38,14 @@ const Output: React.FC<Props> = ({ index, cmd }) => {
           cat: <Cat />,
           clear: <Clear />,
           echo: <Echo />,
-          education: <Education />,
-          email: <Email />,
-          gui: <Gui />,
+          education: <GeneralOutput>Education command - coming soon</GeneralOutput>,
+          email: <GeneralOutput>Opening mailto:ndp190@gmail.com...</GeneralOutput>,
+          gui: <GeneralOutput>GUI command - coming soon</GeneralOutput>,
           help: <Help />,
           history: <History />,
           language: <Language />,
           pwd: <GeneralOutput>/home/nikk</GeneralOutput>,
-          socials: <Socials />,
+          socials: <GeneralOutput>Socials command - coming soon</GeneralOutput>,
           themes: <Themes />,
           welcome: <Welcome />,
           whoami: <GeneralOutput>visitor</GeneralOutput>,

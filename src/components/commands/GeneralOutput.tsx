@@ -1,10 +1,11 @@
 import { Wrapper } from "../styles/Output.styled";
 
-type Props = {
-  children: string;
+interface Props {
+  children: React.ReactNode;
+}
+
+const GeneralOutput: React.FC<Props> = ({ children }) => {
+  return <Wrapper>{children}</Wrapper>;
 };
 
-const GeneralOutput: React.FC<Props> = ({ children }) => (
-  <Wrapper>{children}</Wrapper>
-);
 export default GeneralOutput;

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { getFromLS, setToLS } from "./storage";
+import { getFromLS, setToLS } from "../utils/storage";
 
 export type Language = "en" | "vn";
 

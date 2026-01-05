@@ -3,7 +3,7 @@ import { normalize } from "styled-normalize";
 
 const GlobalStyle = createGlobalStyle`
   ${normalize}
-  
+
   *, ::before, ::after {
     border-width: 0;
     border-style: solid;
@@ -20,7 +20,7 @@ const GlobalStyle = createGlobalStyle`
     font-weight: inherit;
   }
 
-  img, svg, video, canvas, audio, 
+  img, svg, video, canvas, audio,
   iframe, embed, object {
     display: block;
   }

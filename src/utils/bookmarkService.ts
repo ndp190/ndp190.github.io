@@ -15,11 +15,11 @@ export interface EnrichedBookmark {
  */
 export async function fetchBookmarkManifest(): Promise<BookmarkManifest> {
   const response = await fetch(MANIFEST_URL);
-  
+
   if (!response.ok) {
     throw new Error(`Failed to load bookmarks: ${response.status}`);
   }
-  
+
   return response.json();
 }
 
@@ -52,13 +52,13 @@ export async function fetchBookmarkById(
   id: number
 ): Promise<Bookmark | null> {
   const item = manifest.bookmarks.find(b => b.id === id);
-  
+
   if (!item) {
     return null;
   }
-  
+
   const markdown = await fetchBookmarkContent(item.key);
-  
+
   return {
     ...item,
     markdown,
