@@ -1,3 +1,5 @@
+import About from "./commands/About";
+import Bookmark from "./commands/Bookmark";
 import Cat from "./commands/Cat";
 import Clear from "./commands/Clear";
 import Echo from "./commands/Echo";
@@ -8,6 +10,7 @@ import Language from "./commands/Language";
 import Ls from "./commands/Ls";
 import Themes from "./commands/Themes";
 import Tree from "./commands/Tree";
+import Welcome from "./commands/Welcome";
 import { OutputContainer, UsageDiv } from "./styles/Output.styled";
 import { termContext } from "./Terminal";
 import { useContext } from "react";
@@ -16,11 +19,6 @@ type Props = {
   index: number;
   cmd: string;
 };
-
-// Placeholder components - will be implemented in later phases
-const Placeholder: React.FC<{ name: string }> = ({ name }) => (
-  <GeneralOutput>{name} command - coming soon</GeneralOutput>
-);
 
 const Output: React.FC<Props> = ({ index, cmd }) => {
   const { arg } = useContext(termContext);
@@ -35,21 +33,21 @@ const Output: React.FC<Props> = ({ index, cmd }) => {
     <OutputContainer data-testid={index === 0 ? "latest-output" : null}>
       {
         {
-          about: <Placeholder name="About" />,
-          bookmark: <Placeholder name="Bookmark" />,
+          about: <About />,
+          bookmark: <Bookmark />,
           cat: <Cat />,
           clear: <Clear />,
           echo: <Echo />,
-          education: <Placeholder name="Education" />,
-          email: <Placeholder name="Email" />,
-          gui: <Placeholder name="Gui" />,
+          education: <GeneralOutput>Education command - coming soon</GeneralOutput>,
+          email: <GeneralOutput>Opening mailto:ndp190@gmail.com...</GeneralOutput>,
+          gui: <GeneralOutput>GUI command - coming soon</GeneralOutput>,
           help: <Help />,
           history: <History />,
           language: <Language />,
           pwd: <GeneralOutput>/home/nikk</GeneralOutput>,
-          socials: <Placeholder name="Socials" />,
+          socials: <GeneralOutput>Socials command - coming soon</GeneralOutput>,
           themes: <Themes />,
-          welcome: <Placeholder name="Welcome" />,
+          welcome: <Welcome />,
           whoami: <GeneralOutput>visitor</GeneralOutput>,
           ls: <Ls />,
           tree: <Tree />,
