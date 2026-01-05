@@ -30,5 +30,5 @@
     "types": ["vitest/globals"]
   },
   "include": ["src", "scripts"],
-  "exclude": ["node_modules", "src/test"]
+  "exclude": ["node_modules", "src/test", "src/__tests__"]
 }
