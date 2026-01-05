@@ -1,10 +1,13 @@
+import Cat from "./commands/Cat";
 import Clear from "./commands/Clear";
 import Echo from "./commands/Echo";
 import GeneralOutput from "./commands/GeneralOutput";
 import Help from "./commands/Help";
 import History from "./commands/History";
 import Language from "./commands/Language";
+import Ls from "./commands/Ls";
 import Themes from "./commands/Themes";
+import Tree from "./commands/Tree";
 import { OutputContainer, UsageDiv } from "./styles/Output.styled";
 import { termContext } from "./Terminal";
 import { useContext } from "react";
@@ -34,7 +37,7 @@ const Output: React.FC<Props> = ({ index, cmd }) => {
         {
           about: <Placeholder name="About" />,
           bookmark: <Placeholder name="Bookmark" />,
-          cat: <Placeholder name="Cat" />,
+          cat: <Cat />,
           clear: <Clear />,
           echo: <Echo />,
           education: <Placeholder name="Education" />,
@@ -48,8 +51,8 @@ const Output: React.FC<Props> = ({ index, cmd }) => {
           themes: <Themes />,
           welcome: <Placeholder name="Welcome" />,
           whoami: <GeneralOutput>visitor</GeneralOutput>,
-          ls: <Placeholder name="Ls" />,
-          tree: <Placeholder name="Tree" />,
+          ls: <Ls />,
+          tree: <Tree />,
         }[cmd]
       }
     </OutputContainer>
