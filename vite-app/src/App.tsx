@@ -7,6 +7,7 @@ import { useLanguage, Language } from '@/hooks/useLanguage';
 import { ThemeContext, LanguageContext, HomeContext, AllTranslations } from '@/contexts';
 import { FileNode } from '@/types/files';
 import { BookmarkManifestItem } from '@/types/bookmark';
+import Terminal from '@/components/Terminal';
 
 // Import generated data
 import fileTreeData from '@/data/fileTree.json';
@@ -105,13 +106,7 @@ function App() {
               translations: translationsData as AllTranslations,
               bookmarks
             }}>
-              <div>
-                <p>Terminal will be rendered here...</p>
-                <p>Theme: {currentTheme.name}</p>
-                <p>Language: {currentLanguage}</p>
-                <p>Files loaded: {fileTreeData.children?.length || 0}</p>
-                <p>Bookmarks: {bookmarks.length}</p>
-              </div>
+              <Terminal />
             </HomeContext.Provider>
           </LanguageContext.Provider>
         </ThemeContext.Provider>
