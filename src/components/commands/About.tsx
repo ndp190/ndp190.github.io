@@ -106,9 +106,9 @@ const About: React.FC = () => {
     }
   };
 
-  const handleBookmarkClick = (bookmarkId: number) => {
+  const handleBookmarkClick = (bookmarkKey: string) => {
     if (executeCommand) {
-      executeCommand(`bookmark cat ${bookmarkId}`);
+      executeCommand(`cat bookmarks/${bookmarkKey}.md`);
     }
   };
 
@@ -164,15 +164,13 @@ const About: React.FC = () => {
         )}
         {recentBookmarks.length > 0 && (
           <>
-            <div>+ Recent bookmarks (<Cmd>bookmark</Cmd>):</div>
+            <div>+ Recent bookmarks (<Cmd>ls bookmarks</Cmd>):</div>
             <BlogList>
               {recentBookmarks.map((bookmark) => {
-                const idStr = String(bookmark.id).padStart(3, ' ');
                 return (
-                  <div key={bookmark.id}>
-                    <span className="file-info">{idStr}  </span>
-                    <BlogLink onClick={() => handleBookmarkClick(bookmark.id)}>
-                      {bookmark.title.length > 50 ? bookmark.title.slice(0, 50) + '...' : bookmark.title}
+                  <div key={bookmark.key}>
+                    <BlogLink onClick={() => handleBookmarkClick(bookmark.key)}>
+                      {bookmark.title.length > 60 ? bookmark.title.slice(0, 60) + '...' : bookmark.title}
                     </BlogLink>
                   </div>
                 );
@@ -209,9 +207,8 @@ const About: React.FC = () => {
         </PreImg>
         {weather && (
           <WeatherInfo data-testid="weather-info">
-            <div>Bien Hoa, Vietnam</div>
-            <div>{weather.temperature}°C - {weather.description}</div>
-            <div>{weather.isDay ? 'Day' : 'Night'}</div>
+            <div>{weather.description} where I live</div>
+            <div>{weather.temperature}°C</div>
           </WeatherInfo>
         )}
       </WeatherSection>

@@ -48,8 +48,15 @@ export const Input = styled.input`
   }
 `;
 
-export const Hints = styled.span`
+export const Hints = styled.span<{ $highlighted?: boolean }>`
   margin-right: 0.875rem;
+  ${({ $highlighted, theme }) =>
+    $highlighted &&
+    `
+    background-color: ${theme.colors?.primary || '#fff'};
+    color: ${theme.colors?.body || '#000'};
+    padding: 0 0.25rem;
+  `}
 `;
 
 export const KeyboardButton = styled.button`

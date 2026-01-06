@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider } from 'styled-components';
 import GlobalStyle from '@/components/styles/GlobalStyle';
@@ -19,6 +19,33 @@ import fileTreeData from '@/data/fileTree.json';
 import translationsData from '@/data/translations.json';
 
 const MANIFEST_URL = 'https://r2.nikkdev.com/bookmark/manifest.json';
+
+// Create bookmarks folder node from bookmark manifest
+function createBookmarksFolder(bookmarks: BookmarkManifestItem[]): FileNode {
+  return {
+    name: 'bookmarks',
+    path: 'bookmarks',
+    isDirectory: true,
+    children: bookmarks.map(b => ({
+      name: `${b.key}.md`,
+      path: `bookmarks/${b.key}.md`,
+      isDirectory: false,
+      size: 0, // Size unknown until content is fetched
+      timestamp: Date.now(),
+    })),
+  };
+}
+
+// Add bookmarks folder to file tree
+function addBookmarksToFileTree(fileTree: FileNode, bookmarks: BookmarkManifestItem[]): FileNode {
+  if (bookmarks.length === 0) return fileTree;
+
+  const bookmarksFolder = createBookmarksFolder(bookmarks);
+  return {
+    ...fileTree,
+    children: [...(fileTree.children || []), bookmarksFolder],
+  };
+}
 
 function App() {
   // Theme state
@@ -97,6 +124,12 @@ function App() {
   const currentTheme = themeLoaded ? selectedTheme : theme;
   const currentLanguage = languageLoaded ? selectedLanguage : language;
 
+  // Merge file tree with bookmarks folder
+  const allFileNode = useMemo(() =>
+    addBookmarksToFileTree(fileTreeData as FileNode, bookmarks),
+    [bookmarks]
+  );
+
   return (
     <BrowserRouter>
       <h1 className="sr-only" aria-label="Terminal Portfolio">
@@ -107,7 +140,7 @@ function App() {
         <ThemeContext.Provider value={themeSwitcher}>
           <LanguageContext.Provider value={{ language: currentLanguage, setLanguage: languageSwitcher }}>
             <HomeContext.Provider value={{
-              allFileNode: fileTreeData as FileNode,
+              allFileNode,
               translations: translationsData as AllTranslations,
               bookmarks
             }}>

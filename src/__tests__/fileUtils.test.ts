@@ -76,22 +76,31 @@ describe('getAllFilePaths', () => {
 });
 
 describe('getMatchingPaths', () => {
-  it('returns all paths when no partial path', () => {
+  it('returns top-level items only when no partial path (level-by-level)', () => {
     const paths = getMatchingPaths(mockFileTree, '');
-    expect(paths.length).toBe(3);
+    // Should only return top-level: about-me.md and blog/
+    expect(paths.length).toBe(2);
+    expect(paths).toContain('about-me.md');
+    expect(paths).toContain('blog/');
   });
 
-  it('filters paths by partial path', () => {
+  it('returns contents of directory when path ends with /', () => {
     const paths = getMatchingPaths(mockFileTree, 'blog/');
     expect(paths.length).toBe(2);
     expect(paths).toContain('blog/hello-world.md');
     expect(paths).toContain('blog/second-post.md');
   });
 
-  it('filters paths by filename prefix', () => {
+  it('filters paths by filename prefix within directory', () => {
     const paths = getMatchingPaths(mockFileTree, 'blog/h');
     expect(paths.length).toBe(1);
     expect(paths[0]).toBe('blog/hello-world.md');
+  });
+
+  it('returns matching directory when partial name matches', () => {
+    const paths = getMatchingPaths(mockFileTree, 'blo');
+    expect(paths.length).toBe(1);
+    expect(paths[0]).toBe('blog/');
   });
 
   it('returns empty array for no matches', () => {

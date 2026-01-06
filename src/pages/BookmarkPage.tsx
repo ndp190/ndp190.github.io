@@ -50,20 +50,19 @@ const BookmarkPage: React.FC = () => {
   const { bookmarks } = useHomeContext();
   const [ready, setReady] = useState(false);
 
+  // Find bookmark by ID
+  const bookmarkId = id ? parseInt(id, 10) : null;
+  const bookmark = bookmarkId !== null ? bookmarks.find(b => b.id === bookmarkId) : null;
+
   useEffect(() => {
-    if (!id) return;
+    if (!id || !bookmark) return;
 
-    const bookmarkId = parseInt(id, 10);
-    const bookmark = bookmarks.find(b => b.id === bookmarkId);
-
-    if (bookmark) {
-      const meta: BookmarkMeta = {
-        title: bookmark.title,
-        description: (bookmark.description || '').slice(0, 160),
-        image: '/og-default.png',
-      };
-      updateMetaTags(meta, id);
-    }
+    const meta: BookmarkMeta = {
+      title: bookmark.title,
+      description: (bookmark.description || '').slice(0, 160),
+      image: '/og-default.png',
+    };
+    updateMetaTags(meta, id);
 
     setReady(true);
 
@@ -71,11 +70,11 @@ const BookmarkPage: React.FC = () => {
     return () => {
       document.title = 'Nikk Terminal';
     };
-  }, [id, bookmarks]);
+  }, [id, bookmark]);
 
-  if (!id || !ready) return null;
+  if (!id || !ready || !bookmark) return null;
 
-  return <Terminal initialCommand={`bookmark cat ${id}`} />;
+  return <Terminal initialCommand={`cat bookmarks/${bookmark.key}.md`} />;
 };
 
 export default BookmarkPage;
