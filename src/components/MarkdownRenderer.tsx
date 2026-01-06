@@ -5,6 +5,7 @@ import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import styled from "styled-components";
 import "katex/dist/katex.min.css";
+import Mermaid from "./Mermaid";
 
 export const MarkdownWrapper = styled.div`
   margin: 0.5rem auto 1rem;
@@ -224,6 +225,25 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, allowHtml 
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkMath]}
       rehypePlugins={rehypePlugins}
+      components={{
+        code({ className, children, ...props }) {
+          const match = /language-(\w+)/.exec(className || '');
+          const language = match ? match[1] : '';
+
+          // Render mermaid diagrams
+          if (language === 'mermaid') {
+            const chart = String(children).replace(/\n$/, '');
+            return <Mermaid chart={chart} />;
+          }
+
+          // Regular code blocks
+          return (
+            <code className={className} {...props}>
+              {children}
+            </code>
+          );
+        },
+      }}
     >
       {content}
     </ReactMarkdown>
