@@ -149,30 +149,47 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "about" }) => {
 
   // Track mouse position to detect text selection (drag)
   const mouseDownPos = useRef<{ x: number; y: number } | null>(null);
+  const isDragging = useRef(false);
 
   const handleMouseDown = useCallback((e: MouseEvent) => {
     mouseDownPos.current = { x: e.clientX, y: e.clientY };
+    // Mark as potentially dragging - will be confirmed on mouseup
+    isDragging.current = true;
   }, []);
 
   // focus on input when terminal is clicked (only on desktop or when input is in view on mobile)
   const handleMouseUp = useCallback((e: MouseEvent) => {
-    if (!inputRef.current) return;
-
-    // Don't focus if user has selected text
-    const selection = window.getSelection();
-    if (selection && selection.toString().length > 0) return;
-
-    // Don't focus if user dragged (was selecting)
+    // Check if this was a drag (mouse moved significantly)
+    let didDrag = false;
     if (mouseDownPos.current) {
       const dx = Math.abs(e.clientX - mouseDownPos.current.x);
       const dy = Math.abs(e.clientY - mouseDownPos.current.y);
-      if (dx > 5 || dy > 5) return; // Dragged more than 5px
+      didDrag = dx > 5 || dy > 5;
+    }
+
+    // Clear dragging state after a delay to allow selection to persist
+    setTimeout(() => {
+      isDragging.current = false;
+    }, 150);
+
+    if (!inputRef.current) return;
+
+    // Don't focus if user dragged (was selecting)
+    if (didDrag) {
+      return;
     }
 
     // On mobile, only focus if the form is in viewport
     if (isMobile && !isFormInViewport()) return;
 
-    inputRef.current.focus({ preventScroll: true });
+    // Use setTimeout to allow selection to complete before checking
+    setTimeout(() => {
+      // Don't focus if user has selected text
+      const selection = window.getSelection();
+      if (selection && selection.toString().length > 0) return;
+
+      inputRef.current?.focus({ preventScroll: true });
+    }, 10);
   }, [isMobile, isFormInViewport]);
 
   useEffect(() => {
@@ -332,6 +349,8 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "about" }) => {
     const timer = setTimeout(() => {
       // On mobile, don't auto-focus unless already focused
       if (isMobile && !isInputFocused) return;
+      // Don't steal focus if user is dragging or just dragged (selecting text)
+      if (isDragging.current) return;
       // Don't steal focus if user has selected text
       const selection = window.getSelection();
       if (selection && selection.toString().length > 0) return;

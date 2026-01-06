@@ -59,15 +59,20 @@ describe('Terminal component', () => {
       expect(screen.getByTitle('terminal-input')).toBeInTheDocument();
     });
 
-    it('focuses input with preventScroll on document mouseup', () => {
+    it('focuses input with preventScroll on document mouseup', async () => {
+      vi.useFakeTimers();
       renderTerminal();
 
       // Simulate mousedown + mouseup (simple click without drag)
       fireEvent.mouseDown(document.body, { clientX: 100, clientY: 100 });
       fireEvent.mouseUp(document.body, { clientX: 100, clientY: 100 });
 
+      // Advance timers to trigger the setTimeout in handleMouseUp
+      await vi.advanceTimersByTimeAsync(20);
+
       // Check that focus was called with preventScroll: true
       expect(mockFocus).toHaveBeenCalledWith({ preventScroll: true });
+      vi.useRealTimers();
     });
 
     it('focuses input with preventScroll when using arrow keys', () => {
@@ -89,7 +94,8 @@ describe('Terminal component', () => {
       // Note: The implementation calls blur() then focus() is triggered by useEffect
     });
 
-    it('does not scroll to input when clicking on terminal content', () => {
+    it('does not scroll to input when clicking on terminal content', async () => {
+      vi.useFakeTimers();
       renderTerminal();
 
       const wrapper = screen.getByTestId('terminal-wrapper');
@@ -98,8 +104,12 @@ describe('Terminal component', () => {
       fireEvent.mouseDown(wrapper, { clientX: 100, clientY: 100 });
       fireEvent.mouseUp(wrapper, { clientX: 100, clientY: 100 });
 
+      // Advance timers to trigger the setTimeout in handleMouseUp
+      await vi.advanceTimersByTimeAsync(20);
+
       // Verify focus was called with preventScroll
       expect(mockFocus).toHaveBeenCalledWith({ preventScroll: true });
+      vi.useRealTimers();
     });
   });
 

@@ -185,14 +185,14 @@ const About: React.FC = () => {
           <div>Projects:</div>
           {projects.map(({ title, desc, url }) => (
             <div key={title}>
-              - <Link href={url}>{title}</Link>: {desc}
+              - <Link href={url} target="_blank" rel="noopener noreferrer">{title}</Link>: {desc}
             </div>
           ))}
         <div>
           Reach me at:{" "}
-          <Link href="https://github.com/ndp190"><GitHubIcon />GitHub</Link>{" | "}
-          <Link href="https://www.linkedin.com/in/ndp190"><LinkedInIcon />LinkedIn</Link>{" | "}
-          <Link href="https://twitter.com/ndp190"><TwitterIcon />Twitter</Link>{" | "}
+          <Link href="https://github.com/ndp190" target="_blank" rel="noopener noreferrer"><GitHubIcon />GitHub</Link>{" | "}
+          <Link href="https://www.linkedin.com/in/ndp190" target="_blank" rel="noopener noreferrer"><LinkedInIcon />LinkedIn</Link>{" | "}
+          <Link href="https://twitter.com/ndp190" target="_blank" rel="noopener noreferrer"><TwitterIcon />Twitter</Link>{" | "}
           <Link href="mailto:ndp190@gmail.com"><EmailIcon />Email</Link>
         </div>
         </div>
