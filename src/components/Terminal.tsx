@@ -22,8 +22,6 @@ import {
 import { argTab } from "../utils/funcs";
 import { useHomeContext } from "@/contexts";
 import { getMatchingPaths } from "@/utils/fileUtils";
-import { fetchBookmarkManifest } from "@/utils/bookmarkService";
-import type { BookmarkManifest } from "@/types/bookmark";
 
 type Command = {
   cmd: string;
@@ -32,10 +30,8 @@ type Command = {
 }[];
 
 export const commands: Command = [
-  { cmd: "about", desc: "about me", tab: 8 },
-  { cmd: "bookmark", desc: "view saved articles", tab: 5 },
+  { cmd: "about", desc: "about me and this site", tab: 8 },
   { cmd: "cat", desc: "display file contents", tab: 10 },
-  { cmd: "welcome", desc: "display hero section", tab: 6 },
   { cmd: "help", desc: "check available commands", tab: 9 },
   { cmd: "themes", desc: "check available themes", tab: 7 },
   { cmd: "language", desc: "switch language (en/vn)", tab: 5 },
@@ -69,7 +65,7 @@ interface TerminalProps {
   initialCommand?: string;
 }
 
-const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
+const Terminal: React.FC<TerminalProps> = ({ initialCommand = "about" }) => {
   const containerRef = useRef(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -79,11 +75,12 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
   const [cmdHistory, setCmdHistory] = useState<string[]>([initialCommand]);
   const [rerender, setRerender] = useState(false);
   const [hints, setHints] = useState<string[]>([]);
+  const [hintIndex, setHintIndex] = useState(-1); // -1 means no hint selected, 0+ means cycling through hints
+  const [originalInput, setOriginalInput] = useState(""); // Store input before cycling
   const [pointer, setPointer] = useState(-1);
   const [isInputFocused, setIsInputFocused] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
-  const [bookmarkManifest, setBookmarkManifest] = useState<BookmarkManifest | null>(null);
 
   // Detect mobile device - only after mount to avoid hydration mismatch
   useEffect(() => {
@@ -101,13 +98,6 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // Load bookmark manifest for autocomplete
-  useEffect(() => {
-    fetchBookmarkManifest()
-      .then(setBookmarkManifest)
-      .catch(() => {}); // Silently fail - autocomplete just won't work
-  }, []);
-
   // Check if form is in viewport
   const isFormInViewport = useCallback(() => {
     if (!formRef.current) return false;
@@ -122,6 +112,10 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setRerender(false);
       setInputVal(e.target.value);
+      // Reset hint cycling when user types manually
+      setHintIndex(-1);
+      setOriginalInput("");
+      setHints([]);
     },
     []
   );
@@ -148,20 +142,59 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
     setPointer(-1);
   };
 
+  // Track mouse position to detect text selection (drag)
+  const mouseDownPos = useRef<{ x: number; y: number } | null>(null);
+  const isDragging = useRef(false);
+
+  const handleMouseDown = useCallback((e: MouseEvent) => {
+    mouseDownPos.current = { x: e.clientX, y: e.clientY };
+    // Mark as potentially dragging - will be confirmed on mouseup
+    isDragging.current = true;
+  }, []);
+
   // focus on input when terminal is clicked (only on desktop or when input is in view on mobile)
-  const handleDivClick = useCallback(() => {
+  const handleMouseUp = useCallback((e: MouseEvent) => {
+    // Check if this was a drag (mouse moved significantly)
+    let didDrag = false;
+    if (mouseDownPos.current) {
+      const dx = Math.abs(e.clientX - mouseDownPos.current.x);
+      const dy = Math.abs(e.clientY - mouseDownPos.current.y);
+      didDrag = dx > 5 || dy > 5;
+    }
+
+    // Clear dragging state after a delay to allow selection to persist
+    setTimeout(() => {
+      isDragging.current = false;
+    }, 150);
+
     if (!inputRef.current) return;
+
+    // Don't focus if user dragged (was selecting)
+    if (didDrag) {
+      return;
+    }
+
     // On mobile, only focus if the form is in viewport
     if (isMobile && !isFormInViewport()) return;
-    inputRef.current.focus({ preventScroll: true });
+
+    // Use setTimeout to allow selection to complete before checking
+    setTimeout(() => {
+      // Don't focus if user has selected text
+      const selection = window.getSelection();
+      if (selection && selection.toString().length > 0) return;
+
+      inputRef.current?.focus({ preventScroll: true });
+    }, 10);
   }, [isMobile, isFormInViewport]);
 
   useEffect(() => {
-    document.addEventListener("click", handleDivClick);
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("mouseup", handleMouseUp);
     return () => {
-      document.removeEventListener("click", handleDivClick);
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [handleDivClick]);
+  }, [handleMouseDown, handleMouseUp]);
 
   // Handle keyboard button click - focus input and scroll to it
   const handleKeyboardButtonClick = (e: React.MouseEvent) => {
@@ -186,6 +219,61 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
       e.preventDefault();
       if (!inputVal) return;
 
+      // If hints are already shown, cycle through them
+      if (hints.length > 1) {
+        const nextIndex = (hintIndex + 1) % hints.length;
+        setHintIndex(nextIndex);
+
+        // Store original input on first cycle
+        if (hintIndex === -1) {
+          setOriginalInput(inputVal);
+        }
+
+        // Update input with selected hint
+        const inputParts = _.split(originalInput || inputVal, " ");
+        const baseCmd = inputParts[0];
+
+        // Check if this is a path hint (contains /)
+        if (hints[nextIndex].includes("/")) {
+          setInputVal(`${baseCmd} ${hints[nextIndex]}`);
+        } else {
+          // Command hint
+          setInputVal(hints[nextIndex]);
+        }
+        return;
+      }
+
+      const inputParts = _.split(inputVal, " ");
+      const baseCmd = inputParts[0];
+
+      // Handle path autocomplete for cat, ls, tree commands
+      if (["cat", "ls", "tree"].includes(baseCmd) && inputParts.length >= 1) {
+        const partialPath = inputParts[1] || "";
+        const matchingPaths = getMatchingPaths(allFileNode, partialPath);
+
+        if (matchingPaths.length === 1) {
+          setInputVal(`${baseCmd} ${matchingPaths[0]}`);
+          setHints([]);
+          setHintIndex(-1);
+          setOriginalInput("");
+          return;
+        } else if (matchingPaths.length > 1) {
+          setHints(matchingPaths);
+          setHintIndex(0);
+          setOriginalInput(inputVal);
+          setInputVal(`${baseCmd} ${matchingPaths[0]}`);
+          return;
+        }
+        // If no paths match but we have a partial path, don't try command completion
+        if (partialPath) {
+          setHints([]);
+          setHintIndex(-1);
+          setOriginalInput("");
+          return;
+        }
+      }
+
+      // Command autocomplete
       let hintsCmds: string[] = [];
       commands.forEach(({ cmd }) => {
         if (_.startsWith(cmd, inputVal)) {
@@ -193,78 +281,29 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
         }
       });
 
-      // Handle cat command autocomplete
-      const inputParts = _.split(inputVal, " ");
-      if (inputParts[0] === "cat") {
-        const partialPath = inputParts[1] || "";
-        const matchingPaths = getMatchingPaths(allFileNode, partialPath);
-
-        if (matchingPaths.length === 1) {
-          setInputVal(`cat ${matchingPaths[0]}`);
-          setHints([]);
-          return;
-        } else if (matchingPaths.length > 1) {
-          setHints(matchingPaths);
-          return;
-        }
-      }
-
-      // Handle bookmark command autocomplete
-      if (inputParts[0] === "bookmark" && bookmarkManifest) {
-        const subcommand = inputParts[1] || "";
-        const partialId = inputParts[2] || "";
-
-        // Autocomplete subcommand (go/cat)
-        if (inputParts.length <= 2 && !["go", "cat"].includes(subcommand)) {
-          const subcommands = ["go", "cat"].filter(s => s.startsWith(subcommand));
-          if (subcommands.length === 1) {
-            setInputVal(`bookmark ${subcommands[0]} `);
-            setHints([]);
-            return;
-          } else if (subcommands.length > 1 && subcommand) {
-            setHints(subcommands.map(s => `bookmark ${s}`));
-            return;
-          }
-        }
-
-        // Autocomplete bookmark ID with title
-        if (["go", "cat"].includes(subcommand)) {
-          const truncate = (str: string, len: number) =>
-            str.length > len ? str.slice(0, len) + "..." : str;
-
-          const matchingBookmarks = bookmarkManifest.bookmarks
-            .filter(b => String(b.id).startsWith(partialId))
-            .map(b => `${b.id}. ${truncate(b.title, 50)}`);
-
-          if (matchingBookmarks.length === 1) {
-            const id = matchingBookmarks[0].split(".")[0];
-            setInputVal(`bookmark ${subcommand} ${id}`);
-            setHints([]);
-            return;
-          } else if (matchingBookmarks.length > 1) {
-            setHints(matchingBookmarks);
-            return;
-          }
-        }
-      }
-
       const returnedHints = argTab(inputVal, setInputVal, setHints, hintsCmds);
       hintsCmds = returnedHints ? [...hintsCmds, ...returnedHints] : hintsCmds;
 
-      // if there are many command to autocomplete
+      // if there are many commands to autocomplete
       if (hintsCmds.length > 1) {
         setHints(hintsCmds);
+        setHintIndex(0);
+        setOriginalInput(inputVal);
+        setInputVal(hintsCmds[0]);
       }
-      // if only one command to autocomplete
+      // if only one command to autocomplete - complete it with a trailing space
       else if (hintsCmds.length === 1) {
         const currentCmd = _.split(inputVal, " ");
-        setInputVal(
-          currentCmd.length !== 1
-            ? `${currentCmd[0]} ${currentCmd[1]} ${hintsCmds[0]}`
-            : hintsCmds[0]
-        );
-
+        if (currentCmd.length === 1) {
+          // Single command - add trailing space for easy argument input
+          setInputVal(`${hintsCmds[0]} `);
+        } else {
+          // Command with arguments (e.g., themes set dark)
+          setInputVal(`${currentCmd[0]} ${currentCmd[1]} ${hintsCmds[0]}`);
+        }
         setHints([]);
+        setHintIndex(-1);
+        setOriginalInput("");
       }
     }
 
@@ -311,6 +350,11 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
     const timer = setTimeout(() => {
       // On mobile, don't auto-focus unless already focused
       if (isMobile && !isInputFocused) return;
+      // Don't steal focus if user is dragging or just dragged (selecting text)
+      if (isDragging.current) return;
+      // Don't steal focus if user has selected text
+      const selection = window.getSelection();
+      if (selection && selection.toString().length > 0) return;
       inputRef?.current?.focus({ preventScroll: true });
     }, 1);
     return () => clearTimeout(timer);
@@ -320,8 +364,8 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "welcome" }) => {
     <Wrapper data-testid="terminal-wrapper" ref={containerRef}>
       {hints.length > 1 && (
         <div>
-          {hints.map(hCmd => (
-            <Hints key={hCmd}>{hCmd}</Hints>
+          {hints.map((hCmd, idx) => (
+            <Hints key={hCmd} $highlighted={idx === hintIndex}>{hCmd}</Hints>
           ))}
         </div>
       )}
