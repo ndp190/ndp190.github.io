@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, memo } from 'react';
 import mermaid from 'mermaid';
 import styled from 'styled-components';
 
@@ -71,32 +71,50 @@ interface MermaidProps {
   chart: string;
 }
 
-const Mermaid: React.FC<MermaidProps> = ({ chart }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
+// Counter to ensure unique IDs across renders
+let mermaidIdCounter = 0;
+
+const Mermaid: React.FC<MermaidProps> = memo(({ chart }) => {
+  const [svgContent, setSvgContent] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const idRef = useRef(`mermaid-${Math.random().toString(36).substr(2, 9)}`);
+  const [isRendering, setIsRendering] = useState(true);
+  const idRef = useRef(`mermaid-${++mermaidIdCounter}-${Date.now()}`);
 
   useEffect(() => {
-    const renderChart = async () => {
-      if (!containerRef.current) return;
+    let isMounted = true;
 
+    const renderChart = async () => {
       try {
-        // Clear previous content
-        containerRef.current.innerHTML = '';
+        setIsRendering(true);
         setError(null);
 
+        // Generate a unique ID for this render
+        const renderId = `mermaid-${++mermaidIdCounter}-${Date.now()}`;
+        idRef.current = renderId;
+
         // Render the mermaid diagram
-        const { svg } = await mermaid.render(idRef.current, chart);
-        containerRef.current.innerHTML = svg;
+        const { svg } = await mermaid.render(renderId, chart);
+
+        // Only update state if component is still mounted
+        if (isMounted) {
+          setSvgContent(svg);
+          setIsRendering(false);
+        }
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to render diagram';
-        setError(message);
-        // Show the raw chart as fallback
-        containerRef.current.innerHTML = `<pre><code>${chart}</code></pre>`;
+        if (isMounted) {
+          const message = err instanceof Error ? err.message : 'Failed to render diagram';
+          setError(message);
+          setIsRendering(false);
+        }
       }
     };
 
     renderChart();
+
+    // Cleanup function to prevent state updates after unmount
+    return () => {
+      isMounted = false;
+    };
   }, [chart]);
 
   if (error) {
@@ -110,7 +128,13 @@ const Mermaid: React.FC<MermaidProps> = ({ chart }) => {
     );
   }
 
-  return <MermaidContainer ref={containerRef} />;
-};
+  if (isRendering || !svgContent) {
+    return <MermaidContainer>Loading diagram...</MermaidContainer>;
+  }
+
+  return <MermaidContainer dangerouslySetInnerHTML={{ __html: svgContent }} />;
+});
+
+Mermaid.displayName = 'Mermaid';
 
 export default Mermaid;

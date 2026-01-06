@@ -1,3 +1,4 @@
+import { useMemo, memo } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -218,36 +219,48 @@ interface MarkdownRendererProps {
   allowHtml?: boolean;
 }
 
-const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, allowHtml = false }) => {
-  const rehypePlugins = allowHtml ? [rehypeKatex, rehypeRaw] : [rehypeKatex];
+const MarkdownRenderer: React.FC<MarkdownRendererProps> = memo(({ content, allowHtml = false }) => {
+  const rehypePlugins = useMemo(
+    () => (allowHtml ? [rehypeKatex, rehypeRaw] : [rehypeKatex]),
+    [allowHtml]
+  );
+
+  const remarkPlugins = useMemo(() => [remarkGfm, remarkMath], []);
+
+  const components = useMemo(
+    () => ({
+      code({ className, children, ...props }: { className?: string; children?: React.ReactNode }) {
+        const match = /language-(\w+)/.exec(className || '');
+        const language = match ? match[1] : '';
+
+        // Render mermaid diagrams
+        if (language === 'mermaid') {
+          const chart = String(children).replace(/\n$/, '');
+          return <Mermaid chart={chart} />;
+        }
+
+        // Regular code blocks
+        return (
+          <code className={className} {...props}>
+            {children}
+          </code>
+        );
+      },
+    }),
+    []
+  );
 
   return (
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkMath]}
+      remarkPlugins={remarkPlugins}
       rehypePlugins={rehypePlugins}
-      components={{
-        code({ className, children, ...props }) {
-          const match = /language-(\w+)/.exec(className || '');
-          const language = match ? match[1] : '';
-
-          // Render mermaid diagrams
-          if (language === 'mermaid') {
-            const chart = String(children).replace(/\n$/, '');
-            return <Mermaid chart={chart} />;
-          }
-
-          // Regular code blocks
-          return (
-            <code className={className} {...props}>
-              {children}
-            </code>
-          );
-        },
-      }}
+      components={components}
     >
       {content}
     </ReactMarkdown>
   );
-};
+});
+
+MarkdownRenderer.displayName = 'MarkdownRenderer';
 
 export default MarkdownRenderer;
