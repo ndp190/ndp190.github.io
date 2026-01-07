@@ -41,7 +41,6 @@ const Output: React.FC<Props> = ({ index, cmd }) => {
           help: <Help />,
           history: <History />,
           language: <Language />,
-          pwd: <GeneralOutput>/home/nikk</GeneralOutput>,
           socials: <GeneralOutput>Socials command - coming soon</GeneralOutput>,
           themes: <Themes />,
           whoami: <GeneralOutput>visitor</GeneralOutput>,

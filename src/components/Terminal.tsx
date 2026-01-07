@@ -38,7 +38,6 @@ export const commands: Command = [
   { cmd: "clear", desc: "clear the terminal", tab: 8 },
   { cmd: "echo", desc: "print out anything", tab: 9 },
   { cmd: "history", desc: "view command history", tab: 6 },
-  { cmd: "pwd", desc: "print current working directory", tab: 10 },
   { cmd: "ls", desc: "list directory contents (-l for details)", tab: 11 },
   { cmd: "tree", desc: "list contents of directories in a tree-like format", tab: 9 },
 ];
