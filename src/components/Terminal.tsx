@@ -65,6 +65,33 @@ interface TerminalProps {
   initialCommand?: string;
 }
 
+const HISTORY_STORAGE_KEY = 'terminal-history';
+const MAX_HISTORY_SIZE = 100;
+
+const loadHistoryFromStorage = (): string[] => {
+  try {
+    const stored = localStorage.getItem(HISTORY_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed)) {
+        return parsed.slice(0, MAX_HISTORY_SIZE);
+      }
+    }
+  } catch {
+    // Ignore parsing errors
+  }
+  return [];
+};
+
+const saveHistoryToStorage = (history: string[]) => {
+  try {
+    const rotated = history.slice(0, MAX_HISTORY_SIZE);
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(rotated));
+  } catch {
+    // Ignore storage errors (e.g., quota exceeded)
+  }
+};
+
 const Terminal: React.FC<TerminalProps> = ({ initialCommand = "about" }) => {
   const containerRef = useRef(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -72,7 +99,14 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "about" }) => {
   const { allFileNode } = useHomeContext();
 
   const [inputVal, setInputVal] = useState("");
-  const [cmdHistory, setCmdHistory] = useState<string[]>([initialCommand]);
+  const [cmdHistory, setCmdHistory] = useState<string[]>(() => {
+    // Load from storage, prepend initialCommand if it's not already first
+    const stored = loadHistoryFromStorage();
+    if (stored.length === 0 || stored[0] !== initialCommand) {
+      return [initialCommand, ...stored].slice(0, MAX_HISTORY_SIZE);
+    }
+    return stored;
+  });
   const [rerender, setRerender] = useState(false);
   const [hints, setHints] = useState<string[]>([]);
   const [hintIndex, setHintIndex] = useState(-1); // -1 means no hint selected, 0+ means cycling through hints
@@ -97,6 +131,11 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "about" }) => {
     window.addEventListener("resize", checkMobile);
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
+
+  // Persist history to localStorage
+  useEffect(() => {
+    saveHistoryToStorage(cmdHistory);
+  }, [cmdHistory]);
 
   // Check if form is in viewport
   const isFormInViewport = useCallback(() => {

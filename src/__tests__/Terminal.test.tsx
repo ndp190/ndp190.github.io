@@ -57,6 +57,8 @@ const renderTerminal = (initialCommand = 'about') => {
 describe('Terminal component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Clear localStorage to reset history between tests
+    localStorage.clear();
     // Override focus on HTMLInputElement prototype
     HTMLInputElement.prototype.focus = mockFocus;
   });
