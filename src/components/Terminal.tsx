@@ -13,6 +13,7 @@ import {
   Empty,
   Form,
   Hints,
+  HintsContainer,
   Input,
   KeyboardButton,
   MobileBr,
@@ -362,11 +363,11 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "about" }) => {
   return (
     <Wrapper data-testid="terminal-wrapper" ref={containerRef}>
       {hints.length > 1 && (
-        <div>
+        <HintsContainer>
           {hints.map((hCmd, idx) => (
             <Hints key={hCmd} $highlighted={idx === hintIndex}>{hCmd}</Hints>
           ))}
-        </div>
+        </HintsContainer>
       )}
       <Form onSubmit={handleSubmit} ref={formRef}>
         <label htmlFor="terminal-input">

@@ -15,6 +15,12 @@ const GlobalStyle = createGlobalStyle`
     margin: 0;
   }
 
+  pre {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+
   h1, h2, h3, h4, h5, h6 {
     font-size: inherit;
     font-weight: inherit;

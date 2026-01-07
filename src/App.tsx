@@ -24,11 +24,11 @@ const MANIFEST_URL = 'https://r2.nikkdev.com/bookmark/manifest.json';
 function createBookmarksFolder(bookmarks: BookmarkManifestItem[]): FileNode {
   return {
     name: 'bookmarks',
-    path: 'bookmarks',
+    path: 'terminal/bookmarks',
     isDirectory: true,
     children: bookmarks.map(b => ({
       name: `${b.key}.md`,
-      path: `bookmarks/${b.key}.md`,
+      path: `terminal/bookmarks/${b.key}.md`,
       isDirectory: false,
       size: 0, // Size unknown until content is fetched
       timestamp: Date.now(),

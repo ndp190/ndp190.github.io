@@ -1,8 +1,8 @@
 import { FileNode } from "../types/files";
 
 export function findFileByPath(node: FileNode, targetPath: string): FileNode | null {
-  // Normalize the target path (remove leading ./ or /)
-  const normalizedTarget = targetPath.replace(/^\.?\//, '');
+  // Normalize the target path (remove leading ./ or / and trailing /)
+  const normalizedTarget = targetPath.replace(/^\.?\//, '').replace(/\/$/, '');
 
   // Check if current node matches
   if (node.path === normalizedTarget || node.path === `terminal/${normalizedTarget}`) {

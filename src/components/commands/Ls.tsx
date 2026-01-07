@@ -39,7 +39,7 @@ function renderSimpleList(node: FileNode): string {
 
   return children
     .map(child => child.isDirectory ? `${child.name}/` : child.name)
-    .join('  ');
+    .join('\n');
 }
 
 function renderDetailedList(node: FileNode): string {
