@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "npm run generate-data && vite",
-    "build": "npm run generate-data && tsc -b && vite build",
+    "build": "npm run generate-data && tsc -b && vite build && npm run generate-blog-pages",
+    "generate-blog-pages": "tsx scripts/generate-blog-pages.ts",
     "preview": "vite preview",
     "lint": "eslint .",
     "generate-data": "tsx scripts/generate-data.ts",
