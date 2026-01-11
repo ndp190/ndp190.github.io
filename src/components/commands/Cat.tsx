@@ -172,7 +172,7 @@ const Cat: React.FC = () => {
 
   return (
     <MarkdownWrapper ref={contentRef}>
-      <MarkdownRenderer content={content} />
+      <MarkdownRenderer content={content} allowHtml />
     </MarkdownWrapper>
   );
 };

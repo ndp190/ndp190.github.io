@@ -99,9 +99,12 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "about" }) => {
   const { allFileNode } = useHomeContext();
 
   const [inputVal, setInputVal] = useState("");
-  const [cmdHistory, setCmdHistory] = useState<string[]>(() => {
-    // Load from storage, prepend initialCommand if it's not already first
+  // Commands executed in current session (for rendering output)
+  const [cmdHistory, setCmdHistory] = useState<string[]>([initialCommand]);
+  // Stored history for arrow key navigation (current session + localStorage)
+  const [arrowHistory, setArrowHistory] = useState<string[]>(() => {
     const stored = loadHistoryFromStorage();
+    // Combine initial command with stored history, avoiding duplicates at the start
     if (stored.length === 0 || stored[0] !== initialCommand) {
       return [initialCommand, ...stored].slice(0, MAX_HISTORY_SIZE);
     }
@@ -132,10 +135,10 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "about" }) => {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  // Persist history to localStorage
+  // Persist history to localStorage (save arrowHistory, not cmdHistory)
   useEffect(() => {
-    saveHistoryToStorage(cmdHistory);
-  }, [cmdHistory]);
+    saveHistoryToStorage(arrowHistory);
+  }, [arrowHistory]);
 
   // Check if form is in viewport
   const isFormInViewport = useCallback(() => {
@@ -162,6 +165,7 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "about" }) => {
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setCmdHistory([inputVal, ...cmdHistory]);
+    setArrowHistory([inputVal, ...arrowHistory].slice(0, MAX_HISTORY_SIZE));
     setInputVal("");
     setRerender(true);
     setHints([]);
@@ -175,6 +179,7 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "about" }) => {
 
   const executeCommand = (cmd: string) => {
     setCmdHistory([cmd, ...cmdHistory]);
+    setArrowHistory([cmd, ...arrowHistory].slice(0, MAX_HISTORY_SIZE));
     setInputVal("");
     setRerender(true);
     setHints([]);
@@ -356,18 +361,18 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "about" }) => {
       clearHistory();
     }
 
-    // Go previous cmd
+    // Go previous cmd (use arrowHistory for navigation)
     if (e.key === "ArrowUp") {
-      if (pointer >= cmdHistory.length) return;
+      if (pointer >= arrowHistory.length) return;
 
-      if (pointer + 1 === cmdHistory.length) return;
+      if (pointer + 1 === arrowHistory.length) return;
 
-      setInputVal(cmdHistory[pointer + 1]);
+      setInputVal(arrowHistory[pointer + 1]);
       setPointer(prevState => prevState + 1);
       inputRef?.current?.blur();
     }
 
-    // Go next cmd
+    // Go next cmd (use arrowHistory for navigation)
     if (e.key === "ArrowDown") {
       if (pointer < 0) return;
 
@@ -377,7 +382,7 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "about" }) => {
         return;
       }
 
-      setInputVal(cmdHistory[pointer - 1]);
+      setInputVal(arrowHistory[pointer - 1]);
       setPointer(prevState => prevState - 1);
       inputRef?.current?.blur();
     }
@@ -435,7 +440,7 @@ const Terminal: React.FC<TerminalProps> = ({ initialCommand = "about" }) => {
         const validCommand = _.find(commands, { cmd: commandArray[0] });
         const contextValue = {
           arg: _.drop(commandArray),
-          history: cmdHistory,
+          history: arrowHistory,
           rerender,
           index,
           clearHistory,
