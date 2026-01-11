@@ -26,8 +26,8 @@ const extractBlogMeta = (content: string, slug: string): BlogMeta => {
     }
   }
 
-  // Extract first image
-  const imageMatch = content.match(/!\[.*?\]\((.+?)\)/);
+  // Extract first image (markdown or HTML img tag)
+  const imageMatch = content.match(/!\[.*?\]\((.+?)\)/) || content.match(/<img[^>]+src=["']([^"']+)["']/i);
   const image = imageMatch ? imageMatch[1] : '/og-default.png';
 
   return { title, description, image };
