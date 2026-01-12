@@ -89,12 +89,50 @@ const Cat: React.FC = () => {
   }, [bookmark, bookmarkContent, bookmarkLoading]);
 
   // Scroll to the top of the content when cat command is first executed
+  // Wait for media (images/videos) to load to avoid layout shift
   useEffect(() => {
     if (index === 0 && contentRef.current && !hasScrolled.current) {
       hasScrolled.current = true;
-      setTimeout(() => {
+
+      const scrollToTop = () => {
         contentRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' });
-      }, 50);
+      };
+
+      // Find all media elements
+      const images = contentRef.current.querySelectorAll('img');
+      const videos = contentRef.current.querySelectorAll('video');
+      const mediaElements = [...images, ...videos];
+
+      if (mediaElements.length === 0) {
+        // No media, scroll immediately
+        setTimeout(scrollToTop, 50);
+      } else {
+        // Wait for all media to load
+        let loadedCount = 0;
+        const totalMedia = mediaElements.length;
+
+        const onMediaLoad = () => {
+          loadedCount++;
+          if (loadedCount >= totalMedia) {
+            scrollToTop();
+          }
+        };
+
+        mediaElements.forEach((el) => {
+          if (el instanceof HTMLImageElement && el.complete) {
+            onMediaLoad();
+          } else if (el instanceof HTMLVideoElement && el.readyState >= 2) {
+            onMediaLoad();
+          } else {
+            el.addEventListener('load', onMediaLoad, { once: true });
+            el.addEventListener('loadeddata', onMediaLoad, { once: true });
+            el.addEventListener('error', onMediaLoad, { once: true });
+          }
+        });
+
+        // Fallback scroll after 2 seconds if media takes too long
+        setTimeout(scrollToTop, 2000);
+      }
     }
   }, [index, bookmarkContent]);
 
