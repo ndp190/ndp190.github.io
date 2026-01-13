@@ -9,9 +9,9 @@ I woke up to a Readwise billing notification: \$8 charged. That's \$96 a year fo
 
 ## The Problem
 
-Like many knowledge workers, I'm a chronic article hoarder. I stumble upon interesting articles across the web and bookmark them for "later." Readwise was my go-to for this workflow: save article, read it later with nice formatting, annotate the good bits.
+Like many knowledge workers, I'm a chronic article hoarder. I stumble upon interesting articles across the web and bookmark them for "later." Readwise was my go to for this workflow: save article, read it later with nice formatting, annotate the good bits.
 
-But $8/month felt steep for what's essentially a fancy web scraper with a cross-platform reader UI. So I went hunting for alternatives:
+But $8/month felt steep for what's essentially a fancy web scraper with a cross platform reader UI. So I went hunting for alternatives:
 
 - **Instapaper**: Also expensive
 - **Raindrop.io**: Free tier lacks annotation and content scraping/download
@@ -22,13 +22,13 @@ Okay, so I'm checking out what I've got already: a static site on GitHub Pages, 
 
 ## The Firecrawl Discovery
 
-The trickiest part of any read-later app is web scraping. Modern websites are hostile to bots. Paywalls, JavaScript rendering, anti-crawling measures - it's a minefield. Even paid services like Readwise struggle with certain sites.
+The trickiest part of any read-later app is web scraping. Modern websites are hostile to bots. Paywalls, JavaScript rendering, anticrawling measures; it's a minefield. Even paid services like Readwise struggle with certain sites.
 
 I tested a few articles that does not play well with Readwise:
 - [This ngrok blog post on prompt caching](https://ngrok.com/blog/prompt-caching/) -> Readwise couldn't crawl it at all
 - [An Increase.com article on ISO 8583](https://increase.com/articles/iso-8583-the-language-of-credit-cards) -> all images are broken
 
-Then I found [Firecrawl](https://firecrawl.dev), one API call, and it returns clean markdown with images intact. The free tier offers more than enough for my dozen articles a week habit. I tested it against my problem articles - flawless.
+Then I found [Firecrawl](https://firecrawl.dev), one API call, and it returns clean markdown with images intact. The free tier offers more than enough for my dozen articles a week habit. I tested it against my problem articles.. flawless.
 
 Now I had a plan.
 
