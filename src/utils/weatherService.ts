@@ -1,14 +1,17 @@
-// Weather service for Bien Hoa, Vietnam using Open-Meteo API (free, no API key needed)
-// Coordinates: 10.9574° N, 106.8426° E
+// Weather service for Calamvale, Brisbane QLD using Open-Meteo API (free, no API key needed)
+// Coordinates: 27.62333° S, 153.04806° E
 
-const BIEN_HOA_LAT = 10.9574;
-const BIEN_HOA_LON = 106.8426;
+const CALAMVALE_LAT = -27.62333;
+const CALAMVALE_LON = 153.04806;
+const CALAMVALE_TIMEZONE = 'Australia%2FBrisbane';
+const CALAMVALE_LOCATION = 'Calamvale, Brisbane QLD';
 
 export interface WeatherData {
   temperature: number;
   weatherCode: number;
   isDay: boolean;
   description: string;
+  location: string;
 }
 
 // WMO Weather interpretation codes
@@ -42,7 +45,7 @@ const weatherDescriptions: Record<number, string> = {
 
 export async function fetchWeather(): Promise<WeatherData | null> {
   try {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${BIEN_HOA_LAT}&longitude=${BIEN_HOA_LON}&current=temperature_2m,weather_code,is_day&timezone=Asia%2FHo_Chi_Minh`;
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${CALAMVALE_LAT}&longitude=${CALAMVALE_LON}&current=temperature_2m,weather_code,is_day&timezone=${CALAMVALE_TIMEZONE}`;
 
     const response = await fetch(url);
     if (!response.ok) {
@@ -57,6 +60,7 @@ export async function fetchWeather(): Promise<WeatherData | null> {
       weatherCode: current.weather_code,
       isDay: current.is_day === 1,
       description: weatherDescriptions[current.weather_code] || 'Unknown',
+      location: CALAMVALE_LOCATION,
     };
   } catch (error) {
     console.error('Failed to fetch weather:', error);

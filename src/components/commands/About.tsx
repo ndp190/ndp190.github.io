@@ -96,7 +96,7 @@ const About: React.FC = () => {
   useEffect(() => {
     setPun(puns[Math.floor(Math.random() * puns.length)]);
 
-    // Fetch weather for Bien Hoa, Vietnam
+    // Fetch weather for Calamvale, Brisbane QLD
     fetchWeather().then(setWeather);
   }, []);
 
@@ -207,7 +207,7 @@ const About: React.FC = () => {
         </PreImg>
         {weather && (
           <WeatherInfo data-testid="weather-info">
-            <div>{weather.description} where I live</div>
+            <div>{weather.description} in {weather.location}</div>
             <div>{weather.temperature}°C</div>
           </WeatherInfo>
         )}

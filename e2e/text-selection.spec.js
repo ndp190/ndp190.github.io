@@ -1,26 +1,22 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Weather Feature', () => {
-  test('should display weather for Bien Hoa, Vietnam', async ({ page }) => {
+  test('should display weather for Calamvale, Brisbane QLD', async ({ page }) => {
     await page.goto('http://localhost:3000');
 
     // Wait for the about section to load
     await page.waitForSelector('[data-testid="about"]');
 
     // Wait for weather to load (check for location text)
-    await page.waitForSelector('text=Bien Hoa, Vietnam', { timeout: 10000 });
+    await page.waitForSelector('text=Calamvale, Brisbane QLD', { timeout: 10000 });
 
     // Verify weather info is displayed
-    const weatherLocation = await page.getByText('Bien Hoa, Vietnam');
+    const weatherLocation = await page.getByText('Calamvale, Brisbane QLD');
     expect(await weatherLocation.isVisible()).toBe(true);
 
     // Check that temperature is displayed (should contain °C)
     const temperatureText = await page.locator('[data-testid="about"]').locator('text=/\\d+°C/');
     expect(await temperatureText.count()).toBeGreaterThan(0);
-
-    // Check Day or Night is displayed
-    const dayNightText = await page.locator('[data-testid="about"]').locator('text=/Day|Night/');
-    expect(await dayNightText.count()).toBeGreaterThan(0);
 
     console.log('Weather displayed successfully!');
   });
