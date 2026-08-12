@@ -1,4 +1,14 @@
 import { jwtVerify, createRemoteJWKSet } from 'jose';
+import { unified } from 'unified';
+import remarkParse from 'remark-parse';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import remarkRehype from 'remark-rehype';
+import rehypeRaw from 'rehype-raw';
+import rehypeKatex from 'rehype-katex';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
+import rehypeStringify from 'rehype-stringify';
+import type { Schema } from 'hast-util-sanitize';
 import type { Env, ReadingProgress, Annotation, AnnotationList, StoredBookmark, BookmarkEntry, BookmarkManifest } from './types';
 import { backfillBookmarkedArticleImages, normalizeArticleImages } from './imageProcessing';
 import { BOOKMARK_READER_PNG_ICONS } from './icons';
@@ -144,7 +154,12 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
         return jsonResponse({ error: 'Bookmark not found' }, 404);
       }
       const bookmark = await object.json() as StoredBookmark;
-      return jsonResponse(bookmark);
+      const source = bookmark.firecrawlResponse?.data?.markdown
+        || bookmark.firecrawlResponse?.data?.html
+        || bookmark.firecrawlResponse?.data?.rawHtml
+        || '';
+      const renderedHtml = source ? await renderMarkdownContent(source) : '';
+      return jsonResponse({ ...bookmark, renderedHtml });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       return jsonResponse({ error: message }, 500);
@@ -583,6 +598,114 @@ async function getManifest(env: Env): Promise<BookmarkManifest | null> {
     return null;
   }
   return object.json() as Promise<BookmarkManifest>;
+}
+
+const markdownSanitizeSchema: Schema = {
+  ...defaultSchema,
+  tagNames: [
+    ...(defaultSchema.tagNames || []),
+    'audio',
+    'figcaption',
+    'figure',
+    'iframe',
+    'picture',
+    'source',
+    'track',
+    'video',
+  ],
+  attributes: {
+    ...defaultSchema.attributes,
+    '*': [
+      ...(defaultSchema.attributes?.['*'] || []),
+      'ariaLabel',
+      'className',
+      'dataAnnotationId',
+      'dataLanguage',
+    ],
+    a: [
+      ...(defaultSchema.attributes?.a || []),
+      'target',
+      'rel',
+    ],
+    audio: [
+      'controls',
+      'preload',
+      'src',
+    ],
+    code: [
+      ...(defaultSchema.attributes?.code || []),
+      ['className', /^language-./],
+    ],
+    iframe: [
+      'allow',
+      'allowFullScreen',
+      'height',
+      'loading',
+      'referrerPolicy',
+      'src',
+      'title',
+      'width',
+    ],
+    img: [
+      ...(defaultSchema.attributes?.img || []),
+      'decoding',
+      'loading',
+      'referrerPolicy',
+      'srcSet',
+      'sizes',
+    ],
+    input: [
+      'checked',
+      'disabled',
+      'type',
+    ],
+    source: [
+      'media',
+      'sizes',
+      'src',
+      'srcSet',
+      'type',
+    ],
+    track: [
+      'default',
+      'kind',
+      'label',
+      'src',
+      'srcLang',
+    ],
+    video: [
+      'autoPlay',
+      'controls',
+      'height',
+      'loop',
+      'muted',
+      'playsInline',
+      'poster',
+      'preload',
+      'src',
+      'width',
+    ],
+  },
+  protocols: {
+    ...defaultSchema.protocols,
+    href: ['http', 'https', 'mailto', 'tel'],
+    src: ['http', 'https', 'data'],
+  },
+};
+
+async function renderMarkdownContent(content: string): Promise<string> {
+  const file = await unified()
+    .use(remarkParse)
+    .use(remarkGfm)
+    .use(remarkMath)
+    .use(remarkRehype, { allowDangerousHtml: true })
+    .use(rehypeRaw)
+    .use(rehypeSanitize, markdownSanitizeSchema)
+    .use(rehypeKatex)
+    .use(rehypeStringify)
+    .process(content);
+
+  return String(file);
 }
 
 interface ScrapeOptions {
@@ -1713,55 +1836,116 @@ function getReadingPageHtml(key: string): string {
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap&subset=vietnamese" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <script>
+    (function () {
+      try {
+        const prefs = JSON.parse(localStorage.getItem('bookmark-reader-preferences') || '{}');
+        if (prefs.width) document.documentElement.style.setProperty('--content-width', prefs.width);
+        if (prefs.fontSize) document.documentElement.style.setProperty('--reader-font-size', prefs.fontSize + 'px');
+      } catch (_) {}
+    })();
+  </script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      color-scheme: dark;
+      --bg: #282828;
+      --surface: #3c3836;
+      --surface-muted: #504945;
+      --ink: #ebdbb2;
+      --ink-soft: #d5c4a1;
+      --muted: #928374;
+      --line: #504945;
+      --accent: #fabd2f;
+      --accent-strong: #fabd2f;
+      --accent-2: #83a598;
+      --mark: rgba(131, 165, 152, 0.38);
+      --danger: #fb4934;
+      --code-bg: rgba(146, 131, 116, 0.13);
+      --code-ink: #ebdbb2;
+      --shadow: none;
+      --content-width: 80ch;
+      --reader-font-size: 1rem;
+      --topbar-height: 64px;
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #282828;
+      --surface: #3c3836;
+      --surface-muted: #504945;
+      --ink: #ebdbb2;
+      --ink-soft: #d5c4a1;
+      --muted: #928374;
+      --line: #504945;
+      --accent: #fabd2f;
+      --accent-strong: #fabd2f;
+      --accent-2: #83a598;
+      --mark: rgba(131, 165, 152, 0.38);
+      --danger: #fb4934;
+      --code-bg: rgba(146, 131, 116, 0.13);
+      --code-ink: #ebdbb2;
+      --shadow: none;
+    }
     html, body {
       overflow-x: hidden;
       max-width: 100vw;
+      scroll-behavior: smooth;
     }
     body {
       font-family: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
-      background: #282828;
-      color: #ebdbb2;
+      font-weight: 500;
+      background: var(--bg);
+      color: var(--ink);
       min-height: 100vh;
-      line-height: 1.7;
+      line-height: 1.75;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
     .header {
       position: fixed;
       top: 0;
       left: 0;
       right: 0;
-      background: #3c3836;
-      border-bottom: 1px solid #504945;
-      padding: 0.75rem 1.5rem;
+      min-height: var(--topbar-height);
+      background: rgba(60, 56, 54, 0.94);
+      border-bottom: 1px solid var(--line);
+      padding: 0.65rem clamp(1rem, 3vw, 1.5rem);
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 1rem;
       z-index: 100;
+      backdrop-filter: blur(18px);
     }
     .back-btn {
-      color: #83a598;
+      color: var(--accent-2);
       text-decoration: none;
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      font-weight: 500;
+      font-weight: 700;
+      min-width: fit-content;
     }
     .back-btn:hover { opacity: 0.8; }
     .reading-progress {
       display: flex;
       align-items: center;
       gap: 0.75rem;
-      font-size: 0.9rem;
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-weight: 700;
+      min-width: 168px;
     }
     .header-actions {
       display: flex;
       align-items: center;
       gap: 0.5rem;
+      min-width: fit-content;
     }
-    .header-btn {
+    .header-btn, .setting-btn {
       background: none;
-      border: 2px solid #504945;
+      border: 1px solid var(--line);
       border-radius: 6px;
       width: 36px;
       height: 36px;
@@ -1770,41 +1954,56 @@ function getReadingPageHtml(key: string): string {
       align-items: center;
       justify-content: center;
       transition: all 0.2s;
-      color: #928374;
-      font-size: 1.1rem;
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 0.9rem;
+      font-weight: 800;
+      flex: 0 0 auto;
     }
-    .header-btn:hover { border-color: #fabd2f; color: #ebdbb2; }
+    .header-btn:hover, .setting-btn:hover { border-color: var(--accent); color: var(--accent-strong); background: var(--surface-muted); }
+    .header-btn:focus-visible, .setting-btn:focus-visible, .back-btn:focus-visible, .annotation-toggle:focus-visible {
+      outline: 3px solid rgba(250, 189, 47, 0.42);
+      outline-offset: 3px;
+    }
     .header-btn.active {
-      background: #fabd2f;
-      border-color: #fabd2f;
-      color: #282828;
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--surface);
     }
     .header-btn.fav-btn.active {
       background: transparent;
-      border-color: #fabd2f;
-      color: #fabd2f;
+      border-color: var(--accent);
+      color: var(--accent);
     }
     .header-btn.open-url-btn:hover {
-      border-color: #83a598;
-      color: #83a598;
+      border-color: var(--accent-2);
+      color: var(--accent-2);
+    }
+    .reader-settings {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding-left: 0.5rem;
+      margin-left: 0.25rem;
+      border-left: 1px solid var(--line);
     }
     .progress-bar-header {
       width: 120px;
       height: 6px;
-      background: #504945;
+      background: var(--surface-muted);
       border-radius: 3px;
       overflow: hidden;
     }
     .progress-fill-header {
       height: 100%;
-      background: linear-gradient(90deg, #fabd2f, #b8bb26);
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
       border-radius: 3px;
       /* no transition for smooth scroll tracking */
     }
     .container {
-      max-width: 800px;
+      max-width: calc(var(--content-width) + 4rem);
       margin: 0 auto;
-      padding: 5rem 2rem 4rem;
+      padding: calc(var(--topbar-height) + 2.5rem) 2rem 5rem;
     }
     .loading, .error-state {
       display: flex;
@@ -1814,109 +2013,390 @@ function getReadingPageHtml(key: string): string {
       padding: 4rem 2rem;
       text-align: center;
     }
-    .error-state { color: #fb4934; }
+    .error-state { color: var(--danger); }
     .spinner {
       width: 24px;
       height: 24px;
-      border: 3px solid #504945;
-      border-top-color: #fabd2f;
+      border: 3px solid var(--line);
+      border-top-color: var(--accent);
       border-radius: 50%;
       animation: spin 1s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* Markdown content styles */
-    .content h1, .content h2, .content h3, .content h4, .content h5, .content h6 {
-      color: #fabd2f;
-      margin: 1.5em 0 0.75em;
+    .reader-article {
+      max-width: var(--content-width);
+      margin: 0 auto;
+    }
+    .article-header {
+      margin: 0.5rem auto 1.25rem;
+      max-width: 80ch;
+      color: var(--ink-soft);
+    }
+    .article-kicker {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.45rem 0.8rem;
+      color: var(--muted);
+      font-size: 0.82rem;
+      font-weight: 500;
+      letter-spacing: 0;
+      margin-bottom: 0.5rem;
+    }
+    .article-source {
+      color: var(--accent-2);
+      text-decoration: none;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      border-bottom: 1px dashed rgba(131, 165, 152, 0.5);
+    }
+    .article-source:hover { border-bottom-color: var(--accent-2); }
+    .article-title {
+      font-family: inherit;
+      font-size: 1.75rem;
+      font-weight: 600;
       line-height: 1.3;
+      letter-spacing: 0;
+      color: var(--accent);
+      border-bottom: 1px solid var(--muted);
+      padding-bottom: 0.5rem;
     }
-    .content h1 { font-size: 2rem; margin-top: 0; }
-    .content h2 { font-size: 1.5rem; }
-    .content h3 { font-size: 1.25rem; }
-    .content p { margin: 1em 0; }
-    .content a { color: #83a598; }
-    .content a:hover { text-decoration: none; }
-    .content ul, .content ol { margin: 1em 0; padding-left: 2em; }
-    .content li { margin: 0.5em 0; }
-    .content blockquote {
-      border-left: 4px solid #fabd2f;
-      margin: 1em 0;
-      padding: 0.5em 1em;
-      background: #3c3836;
+    .article-description {
+      margin-top: 0.75rem;
+      color: var(--ink-soft);
+      font-size: 0.95rem;
+      line-height: 1.65;
+    }
+
+    .article-body {
+      margin: 0.5rem auto 1rem;
+      max-width: 80ch;
+      font-family: inherit;
+      font-size: var(--reader-font-size);
+      line-height: 1.75;
+      color: var(--ink);
+      overflow-wrap: break-word;
+    }
+    .article-body h1,
+    .article-body h2,
+    .article-body h3,
+    .article-body h4,
+    .article-body h5,
+    .article-body h6 {
+      position: relative;
+      color: var(--accent);
+      margin: 1.5rem 0 0.75rem 0;
+      font-weight: 600;
+      line-height: 1.3;
+      letter-spacing: 0;
+      scroll-margin-top: calc(var(--topbar-height) + 1.25rem);
+    }
+    .article-body h1 {
+      font-size: 1.75rem;
+      border-bottom: 1px solid var(--muted);
+      padding-bottom: 0.5rem;
+    }
+    .article-body h2 {
+      font-size: 1.4rem;
+      border-bottom: 1px solid rgba(146, 131, 116, 0.5);
+      padding-bottom: 0.35rem;
+    }
+    .article-body h3 { font-size: 1.15rem; }
+    .article-body h4,
+    .article-body h5,
+    .article-body h6 { font-size: 1rem; }
+    .article-body h2::before,
+    .article-body h3::before { display: none; }
+    .heading-anchor {
+      opacity: 0;
+      color: var(--accent-2);
+      text-decoration: none;
+      margin-left: 0.45rem;
+      font-size: 0.72em;
+      transition: opacity 0.2s;
+    }
+    .article-body h1:hover .heading-anchor,
+    .article-body h2:hover .heading-anchor,
+    .article-body h3:hover .heading-anchor,
+    .article-body h4:hover .heading-anchor,
+    .article-body h5:hover .heading-anchor,
+    .article-body h6:hover .heading-anchor,
+    .heading-anchor:focus-visible { opacity: 1; }
+    .article-body p {
+      margin: 0.75rem 0;
+      color: var(--ink);
+    }
+    .article-body strong { font-weight: 600; color: var(--accent); }
+    .article-body em { color: var(--ink-soft); }
+    .article-body a {
+      color: var(--accent-2);
+      text-decoration: none;
+      border-bottom: 1px dashed rgba(131, 165, 152, 0.5);
+      transition: border-bottom-color 0.2s ease;
+    }
+    .article-body a:hover { border-bottom-color: var(--accent-2); }
+    .article-body ul,
+    .article-body ol {
+      margin: 0.75rem 0;
+      padding-left: 1.75rem;
+    }
+    .article-body li {
+      margin: 0.4rem 0;
+      padding-left: 0.2em;
+    }
+    .article-body li::marker {
+      color: var(--accent-2);
+    }
+    .article-body li > ul,
+    .article-body li > ol { margin: 0.35em 0 0.55em; }
+    .article-body blockquote {
+      border-left: 4px solid var(--accent);
+      margin: 1rem 0;
+      padding: 0.5rem 0 0.5rem 1.25rem;
+      color: var(--ink-soft);
+      background: rgba(146, 131, 116, 0.08);
       border-radius: 0 4px 4px 0;
+      font-style: italic;
     }
-    .content pre {
-      background: #3c3836;
-      border-radius: 6px;
+    .article-body blockquote > :first-child { margin-top: 0; }
+    .article-body blockquote > :last-child { margin-bottom: 0; }
+    .article-body pre {
+      background: var(--code-bg);
+      color: var(--code-ink);
+      border-left: 3px solid var(--accent-2);
+      border-radius: 0 4px 4px 0;
       padding: 1rem;
       overflow-x: auto;
-      margin: 1em 0;
+      margin: 0;
+      tab-size: 2;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
     }
-    .content code {
-      font-family: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+    .code-block { margin: 1rem 0; }
+    .code-label {
+      display: inline-flex;
+      margin: 0 0 0.35rem 0.3rem;
+      color: var(--muted);
+      font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace;
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .article-body code,
+    .article-body kbd,
+    .article-body samp {
+      font-family: inherit;
       font-size: 0.9em;
     }
-    .content :not(pre) > code {
-      background: #3c3836;
-      padding: 0.2em 0.4em;
-      border-radius: 4px;
+    .article-body pre code { color: inherit; background: transparent; padding: 0; }
+    .article-body :not(pre) > code,
+    .article-body kbd {
+      background: rgba(146, 131, 116, 0.19);
+      color: var(--accent);
+      padding: 0.15rem 0.4rem;
+      border-radius: 3px;
+      white-space: break-spaces;
     }
-    .content img {
+    .article-body img,
+    .article-body video,
+    .article-body audio,
+    .article-body iframe,
+    .article-body object {
       max-width: 100%;
-      height: auto;
-      border-radius: 6px;
-      margin: 1em 0;
     }
-    .content table {
+    .article-body img {
+      display: block;
+      height: auto;
+      margin: 1rem 0;
+      border-radius: 4px;
+      border: 1px solid rgba(146, 131, 116, 0.25);
+    }
+    .article-body figure {
+      margin: 1rem 0;
+    }
+    .article-body figure > img,
+    .article-body figure > video,
+    .article-body figure > iframe {
+      width: 100%;
+      background: rgba(146, 131, 116, 0.08);
+      border: 1px solid rgba(146, 131, 116, 0.25);
+      box-shadow: none;
+    }
+    .article-body video {
+      width: min(100%, 600px);
+      height: auto;
+      margin: 1rem 0;
+      border-radius: 4px;
+      border: 1px solid rgba(146, 131, 116, 0.25);
+    }
+    .article-body audio {
+      width: 100%;
+      margin: 1rem 0;
+    }
+    .article-body figcaption {
+      margin-top: 0.55rem;
+      color: var(--muted);
+      font-family: inherit;
+      font-size: 0.86rem;
+      line-height: 1.5;
+      text-align: center;
+    }
+    .media-embed iframe {
+      display: block;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      min-height: 260px;
+      border: 1px solid rgba(146, 131, 116, 0.25);
+      border-radius: 4px;
+      background: rgba(146, 131, 116, 0.08);
+      box-shadow: none;
+    }
+    .media-embed.pdf iframe {
+      aspect-ratio: auto;
+      height: min(76vh, 780px);
+    }
+    .table-scroll {
+      width: 100%;
+      overflow-x: auto;
+      margin: 1.45em 0;
+      border: 1px solid rgba(146, 131, 116, 0.38);
+      border-radius: 4px;
+      background: transparent;
+    }
+    .article-body table {
       width: 100%;
       border-collapse: collapse;
-      margin: 1em 0;
+      margin: 0;
+      min-width: 36rem;
+      font-family: inherit;
+      font-size: 0.9em;
+      line-height: 1.5;
     }
-    .content th, .content td {
-      border: 1px solid #504945;
-      padding: 0.75em;
+    .article-body th,
+    .article-body td {
+      border: 1px solid rgba(146, 131, 116, 0.38);
+      padding: 0.6rem 0.8rem;
       text-align: left;
+      vertical-align: top;
     }
-    .content th { background: #3c3836; color: #fabd2f; }
-    .content hr {
+    .article-body th {
+      background: rgba(146, 131, 116, 0.15);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .article-body tr:nth-child(even) {
+      background: rgba(146, 131, 116, 0.06);
+    }
+    .article-body hr {
       border: none;
-      border-top: 1px solid #504945;
-      margin: 2em 0;
+      border-top: 1px solid rgba(146, 131, 116, 0.5);
+      margin: 1.5rem 0;
+    }
+    .article-body del { color: var(--muted); }
+    .article-body mark:not(.annotation-highlight) {
+      background: var(--mark);
+      color: var(--ink);
+      border-radius: 4px;
+      padding: 0.03em 0.15em;
+    }
+    .article-body details {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.85rem 1rem;
+      background: rgba(146, 131, 116, 0.08);
+    }
+    .article-body summary {
+      cursor: pointer;
+      color: var(--accent-strong);
+      font-family: inherit;
+      font-weight: 600;
+    }
+    .article-body dl { margin: 1.1em 0; }
+    .article-body dt {
+      color: var(--ink);
+      font-family: inherit;
+      font-weight: 600;
+    }
+    .article-body dd { margin: 0.25em 0 0.85em 1.25em; color: var(--ink-soft); }
+    .article-body .contains-task-list {
+      list-style: none;
+      padding-left: 0;
+    }
+    .article-body .task-list-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.55rem;
+      padding-left: 0;
+    }
+    .article-body .task-list-item input[type="checkbox"] {
+      width: 1rem;
+      height: 1rem;
+      margin-top: 0.45em;
+      accent-color: var(--accent);
+      flex: 0 0 auto;
+    }
+    .article-body .footnotes,
+    .article-body .footnote {
+      margin-top: 2.5em;
+      padding-top: 1em;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.86em;
+    }
+    .article-body .mermaid {
+      margin: 1.6em 0;
+      padding: 1rem;
+      overflow-x: auto;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(146, 131, 116, 0.08);
+    }
+    .empty-content {
+      color: var(--muted);
+      font-family: inherit;
+      padding: 2rem 0;
     }
 
     /* Annotation styles */
     .annotation-highlight {
-      background: rgba(255, 230, 0, 0.3);
+      background: var(--mark);
       cursor: pointer;
-      border-radius: 2px;
+      border-radius: 3px;
+      box-decoration-break: clone;
+      -webkit-box-decoration-break: clone;
+      padding: 0.02em 0.08em;
     }
     .annotation-highlight:hover {
-      background: rgba(255, 230, 0, 0.5);
+      background: rgba(131, 165, 152, 0.55);
     }
 
     /* Annotation panel */
     .annotation-panel {
       position: fixed;
       right: 0;
-      top: 60px;
+      top: var(--topbar-height);
       bottom: 0;
-      width: 320px;
-      background: #3c3836;
-      border-left: 1px solid #504945;
+      width: min(380px, 92vw);
+      background: var(--surface);
+      border-left: 1px solid var(--line);
       padding: 1rem;
       overflow-y: auto;
       transform: translateX(100%);
       transition: transform 0.3s;
       z-index: 99;
+      box-shadow: -18px 0 38px rgba(0, 0, 0, 0.16);
     }
     .annotation-panel.open { transform: translateX(0); }
     .annotation-panel h3 {
-      color: #fabd2f;
+      color: var(--ink);
       margin-bottom: 1rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
+      font-size: 1rem;
     }
     .annotation-toggle {
       position: fixed;
@@ -1924,8 +2404,8 @@ function getReadingPageHtml(key: string): string {
       bottom: 1rem;
       width: 48px;
       height: 48px;
-      background: #fabd2f;
-      color: #282828;
+      background: var(--accent);
+      color: var(--surface);
       border: none;
       border-radius: 50%;
       cursor: pointer;
@@ -1934,52 +2414,53 @@ function getReadingPageHtml(key: string): string {
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      box-shadow: var(--shadow);
     }
     .annotation-toggle:hover { opacity: 0.9; }
     .annotation-item {
-      background: #282828;
+      background: rgba(146, 131, 116, 0.12);
       border-radius: 6px;
       padding: 0.75rem;
       margin-bottom: 0.75rem;
-      border: 1px solid #504945;
+      border: 1px solid var(--line);
       cursor: pointer;
       transition: border-color 0.2s;
     }
     .annotation-item:hover {
-      border-color: #fabd2f;
+      border-color: var(--accent);
     }
     .annotation-text {
       font-style: italic;
-      color: #fe8019;
+      color: var(--accent-strong);
       font-size: 0.85rem;
       margin-bottom: 0.5rem;
       padding: 0.5rem;
-      background: rgba(254,128,25,0.1);
+      background: rgba(250, 189, 47, 0.1);
       border-radius: 4px;
     }
     .annotation-note {
       font-size: 0.9rem;
-      color: #d5c4a1;
+      color: var(--ink-soft);
     }
     .annotation-meta {
       font-size: 0.75rem;
-      color: #928374;
+      color: var(--muted);
       margin-top: 0.5rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
     }
     .annotation-delete {
-      color: #fb4934;
+      color: var(--danger);
       background: none;
       border: none;
       cursor: pointer;
       font-size: 0.8rem;
+      font-family: inherit;
     }
     .annotation-delete:hover { text-decoration: underline; }
     .no-annotations {
-      color: #928374;
+      color: var(--muted);
       text-align: center;
       padding: 2rem;
     }
@@ -1987,11 +2468,11 @@ function getReadingPageHtml(key: string): string {
     /* Selection popup */
     .selection-popup {
       position: absolute;
-      background: #3c3836;
-      border: 1px solid #fabd2f;
+      background: var(--surface);
+      border: 1px solid var(--accent);
       border-radius: 6px;
       padding: 0.75rem;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      box-shadow: var(--shadow);
       z-index: 200;
       display: none;
       width: 280px;
@@ -1999,12 +2480,12 @@ function getReadingPageHtml(key: string): string {
     .selection-popup.visible { display: block; }
     .selection-popup textarea {
       width: 100%;
-      background: #282828;
-      border: 1px solid #504945;
+      background: var(--bg);
+      border: 1px solid var(--line);
       border-radius: 4px;
-      color: #ebdbb2;
+      color: var(--ink);
       padding: 0.5rem;
-      font-family: 'JetBrains Mono', 'IBM Plex Mono', monospace;
+      font-family: inherit;
       font-size: 0.9rem;
       resize: vertical;
       min-height: 60px;
@@ -2012,7 +2493,7 @@ function getReadingPageHtml(key: string): string {
     }
     .selection-popup textarea:focus {
       outline: none;
-      border-color: #fabd2f;
+      border-color: var(--accent);
     }
     .selection-popup-buttons {
       display: flex;
@@ -2025,17 +2506,54 @@ function getReadingPageHtml(key: string): string {
       border-radius: 4px;
       cursor: pointer;
       font-size: 0.85rem;
+      font-family: inherit;
     }
     .selection-popup .save-btn {
-      background: #fabd2f;
-      color: #282828;
+      background: var(--accent);
+      color: var(--surface);
       font-weight: 500;
     }
     .selection-popup .cancel-btn {
-      background: #504945;
-      color: #ebdbb2;
+      background: var(--surface-muted);
+      color: var(--ink);
+    }
+    @media (max-width: 760px) {
+      :root { --topbar-height: 104px; }
+      .header {
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .reading-progress {
+        order: 3;
+        flex: 1 0 100%;
+      }
+      .progress-bar-header { flex: 1; width: auto; }
+      .header-actions {
+        margin-left: auto;
+      }
+      .reader-settings {
+        display: none;
+      }
+      .container {
+        padding: calc(var(--topbar-height) + 1.4rem) 1rem 5rem;
+      }
+      .article-title {
+        font-size: clamp(2rem, 12vw, 3.1rem);
+      }
+      .article-body {
+        line-height: 1.72;
+      }
+      .article-body h2::before,
+      .article-body h3::before {
+        left: -0.65rem;
+        width: 0.22rem;
+      }
+      .media-embed iframe {
+        min-height: 210px;
+      }
     }
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
 </head>
 <body>
   <header class="header">
@@ -2043,7 +2561,7 @@ function getReadingPageHtml(key: string): string {
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M19 12H5M12 19l-7-7 7-7"/>
       </svg>
-      Back to list
+      <span>Library</span>
     </a>
     <div class="reading-progress">
       <div class="progress-bar-header">
@@ -2061,6 +2579,15 @@ function getReadingPageHtml(key: string): string {
       </button>
       <button class="header-btn fav-btn" id="favBtn" title="Add to favourites">★</button>
       <button class="header-btn read-btn" id="readBtn" title="Mark as read">✓</button>
+      <div class="reader-settings" aria-label="Reader settings">
+        <button class="setting-btn" id="fontDownBtn" title="Decrease text size" aria-label="Decrease text size">A-</button>
+        <button class="setting-btn" id="fontUpBtn" title="Increase text size" aria-label="Increase text size">A+</button>
+        <button class="setting-btn" id="widthBtn" title="Change line width" aria-label="Change line width">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 8h16M4 16h16M8 4L4 8l4 4M16 12l4 4-4 4"/>
+          </svg>
+        </button>
+      </div>
     </div>
   </header>
 
@@ -2082,7 +2609,7 @@ function getReadingPageHtml(key: string): string {
   <div class="annotation-panel" id="annotationPanel">
     <h3>
       Annotations
-      <button onclick="togglePanel()" style="background:none;border:none;color:#eee;cursor:pointer;font-size:1.2rem;">&times;</button>
+      <button onclick="togglePanel()" style="background:none;border:none;color:var(--ink);cursor:pointer;font-size:1.2rem;">&times;</button>
     </h3>
     <div id="annotationList">
       <div class="no-annotations">No annotations yet</div>
@@ -2090,7 +2617,7 @@ function getReadingPageHtml(key: string): string {
   </div>
 
   <div class="selection-popup" id="selectionPopup">
-    <div style="font-size:0.8rem;color:#666;margin-bottom:0.5rem;">Add annotation:</div>
+    <div style="font-size:0.8rem;color:var(--muted);margin-bottom:0.5rem;">Add annotation</div>
     <textarea id="annotationInput" placeholder="Write your note..."></textarea>
     <div class="selection-popup-buttons">
       <button class="cancel-btn" onclick="hideSelectionPopup()">Cancel</button>
@@ -2113,8 +2640,15 @@ ${getBookmarkReaderOfflineClientScript()}
     let lastSavedPosition = 0;
     let isRead = false;
     let isFavourite = false;
-    let rawMarkdown = ''; // Store raw markdown for offset calculation
+    let rawMarkdown = '';
+    let rawHtml = '';
     let bookmarkUrl = '';
+    const PREF_KEY = 'bookmark-reader-preferences';
+    const widthSteps = ['72ch', '80ch', '92ch', '104ch'];
+    let readerPrefs = {
+      fontSize: 16,
+      width: '80ch'
+    };
 
     async function loadContent() {
       const content = document.getElementById('content');
@@ -2135,17 +2669,31 @@ ${getBookmarkReaderOfflineClientScript()}
         annotations = annotationsData.annotations || [];
         cacheCurrentArticleForOffline(bookmarkKey, bookmark, annotationsData, progressData).catch(() => undefined);
 
-        rawMarkdown = bookmark.firecrawlResponse?.data?.markdown || 'No content available';
-        const title = bookmark.firecrawlResponse?.data?.metadata?.title || 'Untitled';
+        const firecrawlData = bookmark.firecrawlResponse?.data || {};
+        const metadata = firecrawlData.metadata || {};
+        rawMarkdown = firecrawlData.markdown || '';
+        rawHtml = firecrawlData.html || firecrawlData.rawHtml || '';
+        bookmarkUrl = metadata.sourceURL || bookmark.url || '';
+        const title = metadata.title || deriveTitleFromMarkdown(rawMarkdown) || 'Untitled';
+        const description = metadata.description || '';
+        const renderedHtml = bookmark.renderedHtml || '';
 
         document.title = title + ' - Bookmark Reader';
 
-        // Insert annotation markers into markdown, then render
-        const markedMarkdown = insertAnnotationMarkers(rawMarkdown, annotations);
-        let html = markdownToHtml(markedMarkdown);
-        html = replaceMarkersWithHighlights(html);
+        content.innerHTML = renderArticleShell(title, description, bookmarkUrl, bookmark.scrapedAt);
+        const articleBody = document.getElementById('articleBody');
+        if (renderedHtml.trim()) {
+          articleBody.innerHTML = renderedHtml;
+        } else if (rawMarkdown.trim()) {
+          articleBody.innerHTML = fallbackMarkdownToHtml(rawMarkdown);
+        } else if (rawHtml.trim()) {
+          articleBody.innerHTML = sanitizeRenderedHtml(rawHtml);
+        } else {
+          articleBody.innerHTML = '<div class="empty-content">No readable content was saved for this bookmark.</div>';
+        }
 
-        content.innerHTML = '<div class="content" id="markdownContent">' + html + '</div>';
+        enhanceArticle(articleBody, bookmarkUrl, title);
+        applyAnnotationHighlights();
 
         renderAnnotations();
 
@@ -2172,227 +2720,514 @@ ${getBookmarkReaderOfflineClientScript()}
       }
     }
 
-    function markdownToHtml(md) {
-      if (!md) return '';
+    function renderArticleShell(title, description, sourceUrl, scrapedAt) {
+      const domain = getDomain(sourceUrl);
+      const dateLabel = scrapedAt ? new Date(scrapedAt).toLocaleDateString() : '';
+      const sourceLink = sourceUrl
+        ? '<a class="article-source" href="' + escapeAttribute(sourceUrl) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(domain || sourceUrl) + '</a>'
+        : '';
+      const meta = [sourceLink, dateLabel ? '<span>' + escapeHtml(dateLabel) + '</span>' : ''].filter(Boolean).join('<span aria-hidden="true">/</span>');
+      return '<article class="reader-article" id="markdownContent">' +
+        '<header class="article-header">' +
+          '<div class="article-kicker">' + meta + '<span id="readingTime"></span></div>' +
+          '<h1 class="article-title">' + escapeHtml(title) + '</h1>' +
+          (description ? '<p class="article-description">' + escapeHtml(description) + '</p>' : '') +
+        '</header>' +
+        '<div class="article-body" id="articleBody"></div>' +
+      '</article>';
+    }
 
-      const blockPlaceholders = [];
+    function fallbackMarkdownToHtml(md) {
+      return md
+        .split(/\\n{2,}/)
+        .map(block => '<p>' + escapeHtml(block).replace(/\\n/g, '<br>') + '</p>')
+        .join('');
+    }
 
-      function stashBlock(html) {
-        const token = '\\u0000BLOCK_' + blockPlaceholders.length + '\\u0000';
-        blockPlaceholders.push({ token, html });
-        return token;
-      }
-
-      function restoreBlocks(html) {
-        return blockPlaceholders.reduce((result, block) => result.split(block.token).join(block.html), html);
-      }
-
-      function escapeAttribute(value) {
-        return escapeHtml(String(value || ''))
-          .replace(/"/g, '&quot;')
-          .replace(/'/g, '&#39;');
-      }
-
-      function cleanMarkdownUrl(value) {
-        return String(value || '').trim().replace(/^<(.+)>$/, '$1');
-      }
-
-      function renderInline(text) {
-        const codePlaceholders = [];
-        const tick = String.fromCharCode(96);
-        const inlineCodePattern = new RegExp(tick + '([^' + tick + ']+)' + tick, 'g');
-
-        let html = text.replace(inlineCodePattern, function (_match, code) {
-          const token = '\\u0000CODE_' + codePlaceholders.length + '\\u0000';
-          codePlaceholders.push('<code>' + escapeHtml(code) + '</code>');
-          return token;
+    function sanitizeRenderedHtml(html) {
+      const template = document.createElement('template');
+      template.innerHTML = html;
+      template.content.querySelectorAll('script, style, form, button, textarea, select, option').forEach(el => el.remove());
+      template.content.querySelectorAll('*').forEach(el => {
+        Array.from(el.attributes).forEach(attr => {
+          const name = attr.name.toLowerCase();
+          const value = attr.value.trim();
+          if (name.startsWith('on') || name === 'style' || ((name === 'href' || name === 'src') && /^javascript:/i.test(value))) {
+            el.removeAttribute(attr.name);
+          }
         });
-
-        html = html
-          .replace(/!\\[([^\\]]*)\\]\\((<[^>]+>|[^)\\s]+)(?:\\s+["'][^"']*["'])?\\)/g, function (_match, alt, url) {
-            const cleanUrl = cleanMarkdownUrl(url);
-            return '<img src="' + escapeAttribute(cleanUrl) + '" alt="' + escapeAttribute(alt) + '" loading="lazy">';
-          })
-          .replace(/(^|[^!])\\[([^\\]]+)\\]\\((<[^>]+>|[^)\\s]+)(?:\\s+["'][^"']*["'])?\\)/g, function (_match, prefix, label, url) {
-            const cleanUrl = cleanMarkdownUrl(url);
-            return prefix + '<a href="' + escapeAttribute(cleanUrl) + '" target="_blank" rel="noopener noreferrer">' + label + '</a>';
-          })
-          .replace(/\\*\\*\\*([^*]+)\\*\\*\\*/g, '<strong><em>$1</em></strong>')
-          .replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>')
-          .replace(/__([^_]+)__/g, '<strong>$1</strong>')
-          .replace(/~~([^~]+)~~/g, '<del>$1</del>')
-          .replace(/\\*([^*]+)\\*/g, '<em>$1</em>')
-          .replace(/_([^_]+)_/g, '<em>$1</em>');
-
-        return codePlaceholders.reduce((result, code, index) => {
-          return result.split('\\u0000CODE_' + index + '\\u0000').join(code);
-        }, html);
-      }
-
-      function splitTableRow(row) {
-        return row.trim().replace(/^\\|/, '').replace(/\\|$/, '').split('|').map(cell => cell.trim());
-      }
-
-      function isTableBlock(lines) {
-        if (lines.length < 2 || lines[0].indexOf('|') === -1) return false;
-        return /^\\s*\\|?\\s*:?-{3,}:?\\s*(\\|\\s*:?-{3,}:?\\s*)+\\|?\\s*$/.test(lines[1]);
-      }
-
-      function renderTable(lines) {
-        const headers = splitTableRow(lines[0]);
-        const rows = lines.slice(2).filter(line => line.trim()).map(splitTableRow);
-        const headerHtml = headers.map(header => '<th>' + renderInline(header) + '</th>').join('');
-        const bodyHtml = rows.map(row => {
-          const cells = headers.map((_header, index) => '<td>' + renderInline(row[index] || '') + '</td>').join('');
-          return '<tr>' + cells + '</tr>';
-        }).join('');
-
-        return '<table><thead><tr>' + headerHtml + '</tr></thead><tbody>' + bodyHtml + '</tbody></table>';
-      }
-
-      function renderList(lines, ordered) {
-        const tag = ordered ? 'ol' : 'ul';
-        const itemPattern = ordered ? /^\\s*\\d+[.)]\\s+/ : /^\\s*[-*+]\\s+/;
-        const items = lines.map(line => {
-          let item = line.replace(itemPattern, '');
-          const task = /^\\[([ xX])\\]\\s+/.exec(item);
-          let checkbox = '';
-
-          if (task) {
-            checkbox = '<input type="checkbox" disabled' + (task[1].toLowerCase() === 'x' ? ' checked' : '') + '> ';
-            item = item.slice(task[0].length);
-          }
-
-          return '<li>' + checkbox + renderInline(item) + '</li>';
-        }).join('');
-
-        return '<' + tag + '>' + items + '</' + tag + '>';
-      }
-
-      function isRawHtmlBlock(block) {
-        return /^<\\/?(?:address|article|aside|blockquote|details|div|figure|figcaption|footer|form|header|hr|iframe|img|main|nav|ol|p|picture|pre|section|source|table|ul|video|h[1-6])(?:\\s|>|\\/)/i.test(block.trim());
-      }
-
-      function renderBlock(block) {
-        const trimmed = block.trim();
-        if (!trimmed) return '';
-        if (/^\\u0000BLOCK_\\d+\\u0000$/.test(trimmed)) return trimmed;
-        if (isRawHtmlBlock(trimmed)) return trimmed;
-
-        const lines = trimmed.split('\\n');
-        const heading = /^(#{1,6})\\s+(.+?)\\s*#*$/.exec(trimmed);
-
-        if (heading) {
-          const level = heading[1].length;
-          return '<h' + level + '>' + renderInline(heading[2]) + '</h' + level + '>';
-        }
-
-        if (lines.length === 2 && /^=+\\s*$/.test(lines[1])) {
-          return '<h1>' + renderInline(lines[0]) + '</h1>';
-        }
-
-        if (lines.length === 2 && /^-+\\s*$/.test(lines[1])) {
-          return '<h2>' + renderInline(lines[0]) + '</h2>';
-        }
-
-        if (/^(?:-{3,}|\\*{3,}|_{3,})$/.test(trimmed)) {
-          return '<hr>';
-        }
-
-        if (isTableBlock(lines)) {
-          return renderTable(lines);
-        }
-
-        if (lines.every(line => /^\\s*[-*+]\\s+/.test(line))) {
-          return renderList(lines, false);
-        }
-
-        if (lines.every(line => /^\\s*\\d+[.)]\\s+/.test(line))) {
-          return renderList(lines, true);
-        }
-
-        if (lines.every(line => /^>\\s?/.test(line))) {
-          const quote = lines.map(line => line.replace(/^>\\s?/, '')).join('\\n');
-          return '<blockquote>' + renderBlocks(quote) + '</blockquote>';
-        }
-
-        return '<p>' + renderInline(trimmed).replace(/\\n/g, '<br>') + '</p>';
-      }
-
-      function stashFencedCode(source) {
-        const fence = String.fromCharCode(96, 96, 96);
-        const lines = source.replace(/\\r\\n/g, '\\n').split('\\n');
-        const output = [];
-        let inFence = false;
-        let language = '';
-        let codeLines = [];
-
-        for (const line of lines) {
-          if (!inFence && line.slice(0, 3) === fence) {
-            inFence = true;
-            language = line.slice(3).trim().split(/\\s+/)[0] || '';
-            codeLines = [];
-            continue;
-          }
-
-          if (inFence && line.slice(0, 3) === fence) {
-            const className = language ? ' class="language-' + escapeAttribute(language) + '"' : '';
-            output.push(stashBlock('<pre><code' + className + '>' + escapeHtml(codeLines.join('\\n')) + '</code></pre>'));
-            inFence = false;
-            language = '';
-            codeLines = [];
-            continue;
-          }
-
-          if (inFence) {
-            codeLines.push(line);
-          } else {
-            output.push(line);
-          }
-        }
-
-        if (inFence) {
-          output.push(fence + language);
-          output.push(...codeLines);
-        }
-
-        return output.join('\\n');
-      }
-
-      function renderBlocks(source) {
-        return source
-          .split(/\\n{2,}/)
-          .map(renderBlock)
-          .filter(Boolean)
-          .join('\\n');
-      }
-
-      return restoreBlocks(renderBlocks(stashFencedCode(md)));
+      });
+      return template.innerHTML;
     }
 
-    function insertAnnotationMarkers(markdown, anns) {
-      if (!anns || anns.length === 0) return markdown;
-
-      // Sort by startOffset descending (FILO) to avoid position shifts
-      const sorted = [...anns].sort((a, b) => b.startOffset - a.startOffset);
-
-      let result = markdown;
-      for (const ann of sorted) {
-        const { startOffset, endOffset, id } = ann;
-        // Skip invalid offsets
-        if (startOffset < 0 || endOffset > result.length || startOffset >= endOffset) continue;
-
-        // Insert end marker first (it's after start)
-        result = result.slice(0, endOffset) + '[[HL_END]]' + result.slice(endOffset);
-        result = result.slice(0, startOffset) + '[[HL_START:' + id + ']]' + result.slice(startOffset);
-      }
-      return result;
+    function enhanceArticle(body, baseUrl, title) {
+      removeDuplicateTitle(body, title);
+      normalizeLinks(body, baseUrl);
+      enhanceStandaloneMediaLinks(body, baseUrl);
+      normalizeImages(body, baseUrl);
+      wrapTables(body);
+      enhanceCodeBlocks(body);
+      hardenTaskLists(body);
+      addHeadingAnchors(body);
+      updateReadingTime(body);
+      renderMermaid(body);
     }
 
-    function replaceMarkersWithHighlights(html) {
-      return html
-        .replace(/\\[\\[HL_START:([^\\]]+)\\]\\]/g, '<mark class="annotation-highlight" data-annotation-id="$1" onclick="scrollToAnnotationInPanel(\\'$1\\')">')
-        .replace(/\\[\\[HL_END\\]\\]/g, '</mark>');
+    function removeDuplicateTitle(body, title) {
+      const first = Array.from(body.children).find(el => el.textContent.trim());
+      if (!first || !/^H[12]$/.test(first.tagName)) return;
+      if (normalizeText(first.textContent) === normalizeText(title)) first.remove();
+    }
+
+    function normalizeLinks(root, baseUrl) {
+      root.querySelectorAll('a[href]').forEach(link => {
+        const href = link.getAttribute('href') || '';
+        if (href.startsWith('#')) return;
+        const resolved = resolveUrl(href, baseUrl);
+        if (!isSafeLink(resolved)) {
+          link.removeAttribute('href');
+          return;
+        }
+        link.href = resolved;
+        if (/^https?:/i.test(resolved)) {
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+        }
+      });
+    }
+
+    function normalizeImages(root, baseUrl) {
+      root.querySelectorAll('img').forEach(img => {
+        const src = resolveUrl(img.getAttribute('src') || '', baseUrl);
+        if (!isSafeMediaUrl(src)) {
+          img.remove();
+          return;
+        }
+        img.src = src;
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        if (!img.hasAttribute('alt')) img.alt = '';
+
+        const parent = img.parentElement;
+        if (parent && parent.tagName === 'P' && isOnlyMeaningfulChild(parent, img)) {
+          const figure = makeFigure(img, img.alt);
+          parent.replaceWith(figure);
+        }
+      });
+    }
+
+    function enhanceStandaloneMediaLinks(root, baseUrl) {
+      Array.from(root.querySelectorAll('a[href]')).forEach(link => {
+        const parent = link.parentElement;
+        if (!parent || parent.tagName !== 'P' || !isOnlyMeaningfulChild(parent, link)) return;
+        const media = createMediaFromUrl(link.href, link.textContent.trim(), baseUrl);
+        if (media) parent.replaceWith(media);
+      });
+    }
+
+    function createMediaFromUrl(href, label, baseUrl) {
+      const url = resolveUrl(href, baseUrl);
+      if (!isSafeMediaUrl(url)) return null;
+
+      const youtubeId = getYoutubeId(url);
+      if (youtubeId) {
+        return makeFrame('https://www.youtube-nocookie.com/embed/' + encodeURIComponent(youtubeId), label || 'YouTube video', '');
+      }
+
+      const vimeoId = getVimeoId(url);
+      if (vimeoId) {
+        return makeFrame('https://player.vimeo.com/video/' + encodeURIComponent(vimeoId), label || 'Vimeo video', '');
+      }
+
+      if (isImageUrl(url)) {
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = label || '';
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        return makeFigure(img, label);
+      }
+
+      if (isVideoUrl(url)) {
+        const video = document.createElement('video');
+        video.src = url;
+        video.controls = true;
+        video.preload = 'metadata';
+        video.playsInline = true;
+        return makeFigure(video, label);
+      }
+
+      if (isAudioUrl(url)) {
+        const audio = document.createElement('audio');
+        audio.src = url;
+        audio.controls = true;
+        audio.preload = 'metadata';
+        return makeFigure(audio, label);
+      }
+
+      if (isPdfUrl(url)) {
+        return makeFrame(url, label || 'PDF document', 'pdf');
+      }
+
+      return null;
+    }
+
+    function makeFrame(src, title, variant) {
+      const figure = document.createElement('figure');
+      figure.className = 'media-embed' + (variant ? ' ' + variant : '');
+      const iframe = document.createElement('iframe');
+      iframe.src = src;
+      iframe.title = title;
+      iframe.loading = 'lazy';
+      iframe.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+      iframe.allowFullscreen = true;
+      iframe.referrerPolicy = 'strict-origin-when-cross-origin';
+      figure.appendChild(iframe);
+      if (title) {
+        const caption = document.createElement('figcaption');
+        caption.textContent = title;
+        figure.appendChild(caption);
+      }
+      return figure;
+    }
+
+    function makeFigure(element, captionText) {
+      const figure = document.createElement('figure');
+      figure.appendChild(element);
+      const caption = cleanCaption(captionText);
+      if (caption) {
+        const figcaption = document.createElement('figcaption');
+        figcaption.textContent = caption;
+        figure.appendChild(figcaption);
+      }
+      return figure;
+    }
+
+    function wrapTables(root) {
+      root.querySelectorAll('table').forEach(table => {
+        if (table.parentElement && table.parentElement.classList.contains('table-scroll')) return;
+        const wrapper = document.createElement('div');
+        wrapper.className = 'table-scroll';
+        table.parentNode.insertBefore(wrapper, table);
+        wrapper.appendChild(table);
+      });
+    }
+
+    function enhanceCodeBlocks(root) {
+      root.querySelectorAll('pre > code').forEach(code => {
+        const pre = code.parentElement;
+        if (!pre || pre.parentElement?.classList.contains('code-block')) return;
+        const lang = getCodeLanguage(code);
+
+        if (lang === 'mermaid') {
+          const diagram = document.createElement('div');
+          diagram.className = 'mermaid';
+          diagram.textContent = code.textContent || '';
+          pre.replaceWith(diagram);
+          return;
+        }
+
+        if (window.hljs) {
+          try { window.hljs.highlightElement(code); } catch (e) { console.warn('Highlight failed:', e); }
+        }
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'code-block';
+        if (lang) {
+          const label = document.createElement('div');
+          label.className = 'code-label';
+          label.textContent = lang;
+          wrapper.appendChild(label);
+        }
+        pre.parentNode.insertBefore(wrapper, pre);
+        wrapper.appendChild(pre);
+      });
+    }
+
+    function hardenTaskLists(root) {
+      root.querySelectorAll('li input[type="checkbox"]').forEach(input => {
+        input.disabled = true;
+        input.setAttribute('aria-label', input.checked ? 'Completed task' : 'Incomplete task');
+        const li = input.closest('li');
+        if (li) li.classList.add('task-list-item');
+        const list = input.closest('ul, ol');
+        if (list) list.classList.add('contains-task-list');
+      });
+      root.querySelectorAll('input:not([type="checkbox"])').forEach(input => input.remove());
+    }
+
+    function addHeadingAnchors(root) {
+      const used = {};
+      root.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(heading => {
+        const base = slugify(heading.textContent || 'section') || 'section';
+        used[base] = (used[base] || 0) + 1;
+        heading.id = used[base] === 1 ? base : base + '-' + used[base];
+        const anchor = document.createElement('a');
+        anchor.className = 'heading-anchor';
+        anchor.href = '#' + heading.id;
+        anchor.setAttribute('aria-label', 'Link to section');
+        anchor.textContent = '#';
+        heading.appendChild(anchor);
+      });
+    }
+
+    function updateReadingTime(root) {
+      const target = document.getElementById('readingTime');
+      if (!target) return;
+      const words = (root.textContent || '').trim().split(/\\s+/).filter(Boolean).length;
+      if (!words) {
+        target.textContent = '';
+        return;
+      }
+      target.textContent = Math.max(1, Math.round(words / 225)) + ' min read';
+    }
+
+    function renderMermaid(root) {
+      if (!window.mermaid || !root.querySelector('.mermaid')) return;
+      try {
+        window.mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: 'strict',
+          theme: 'dark',
+          themeVariables: {
+            primaryColor: '#fabd2f',
+            primaryTextColor: '#ebdbb2',
+            primaryBorderColor: '#fabd2f',
+            lineColor: '#ebdbb2',
+            secondaryColor: '#3c3836',
+            tertiaryColor: '#504945',
+            background: '#282828',
+            mainBkg: '#3c3836',
+            secondBkg: '#504945',
+            nodeBorder: '#fabd2f',
+            clusterBkg: '#3c3836',
+            clusterBorder: '#504945',
+            titleColor: '#fabd2f',
+            edgeLabelBackground: '#282828'
+          },
+          flowchart: {
+            htmlLabels: true,
+            curve: 'basis'
+          }
+        });
+        const result = window.mermaid.run({ nodes: root.querySelectorAll('.mermaid') });
+        if (result && typeof result.catch === 'function') {
+          result.catch(e => console.warn('Mermaid render failed:', e));
+        }
+      } catch (e) {
+        console.warn('Mermaid render failed:', e);
+      }
+    }
+
+    function applyAnnotationHighlights() {
+      const body = document.getElementById('articleBody');
+      if (!body || !annotations.length) return;
+      const usedRanges = [];
+      const text = body.textContent || '';
+      annotations
+        .filter(a => a.selectedText)
+        .slice()
+        .sort((a, b) => (a.startOffset || 0) - (b.startOffset || 0))
+        .forEach(annotation => {
+          const match = findAnnotationTextRange(text, annotation, usedRanges);
+          if (!match) return;
+          usedRanges.push(match);
+          wrapTextRange(body, match.start, match.end, annotation.id);
+        });
+    }
+
+    function findAnnotationTextRange(fullText, annotation, usedRanges) {
+      const needle = annotation.selectedText;
+      const preferred = Number.isFinite(annotation.startOffset) ? annotation.startOffset : -1;
+      const candidates = [];
+
+      function addCandidate(index) {
+        if (index < 0) return;
+        const range = { start: index, end: index + needle.length };
+        if (!usedRanges.some(used => rangesOverlap(used, range))) candidates.push(range);
+      }
+
+      if (preferred >= 0 && fullText.slice(preferred, preferred + needle.length) === needle) {
+        addCandidate(preferred);
+      }
+
+      let index = fullText.indexOf(needle, Math.max(0, preferred - 160));
+      while (index !== -1) {
+        addCandidate(index);
+        index = fullText.indexOf(needle, index + Math.max(needle.length, 1));
+      }
+
+      if (!candidates.length) {
+        const lowerText = fullText.toLowerCase();
+        const lowerNeedle = needle.toLowerCase();
+        index = lowerText.indexOf(lowerNeedle);
+        while (index !== -1) {
+          addCandidate(index);
+          index = lowerText.indexOf(lowerNeedle, index + Math.max(lowerNeedle.length, 1));
+        }
+      }
+
+      if (!candidates.length) return null;
+      candidates.sort((a, b) => {
+        if (preferred < 0) return a.start - b.start;
+        return Math.abs(a.start - preferred) - Math.abs(b.start - preferred);
+      });
+      return candidates[0];
+    }
+
+    function wrapTextRange(root, start, end, annotationId) {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+          const parent = node.parentElement;
+          if (!parent || parent.closest('script, style, pre, code, textarea')) return NodeFilter.FILTER_REJECT;
+          return node.textContent ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+        }
+      });
+      const spans = [];
+      let offset = 0;
+      let node;
+      while ((node = walker.nextNode())) {
+        const length = node.textContent.length;
+        const nodeStart = offset;
+        const nodeEnd = offset + length;
+        if (nodeEnd > start && nodeStart < end) {
+          spans.push({
+            node,
+            start: Math.max(0, start - nodeStart),
+            end: Math.min(length, end - nodeStart)
+          });
+        }
+        offset = nodeEnd;
+        if (offset >= end) break;
+      }
+
+      spans.reverse().forEach(span => {
+        if (span.start >= span.end) return;
+        const range = document.createRange();
+        range.setStart(span.node, span.start);
+        range.setEnd(span.node, span.end);
+        const mark = document.createElement('mark');
+        mark.className = 'annotation-highlight';
+        mark.dataset.annotationId = annotationId;
+        mark.onclick = () => scrollToAnnotationInPanel(annotationId);
+        range.surroundContents(mark);
+      });
+    }
+
+    function rangesOverlap(a, b) {
+      return a.start < b.end && b.start < a.end;
+    }
+
+    function getTextOffset(root, range) {
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      let offset = 0;
+      let node;
+      while ((node = walker.nextNode())) {
+        if (node === range.startContainer) return offset + range.startOffset;
+        offset += node.textContent.length;
+      }
+      return Math.max(0, (root.textContent || '').indexOf(selectedText));
+    }
+
+    function isOnlyMeaningfulChild(parent, child) {
+      return Array.from(parent.childNodes).every(node => {
+        if (node === child) return true;
+        return node.nodeType === Node.TEXT_NODE && !node.textContent.trim();
+      });
+    }
+
+    function resolveUrl(value, baseUrl) {
+      if (!value) return '';
+      try {
+        return new URL(value, baseUrl || window.location.href).href;
+      } catch (_) {
+        return value;
+      }
+    }
+
+    function isSafeLink(value) {
+      return /^(https?:|mailto:|tel:|#)/i.test(value);
+    }
+
+    function isSafeMediaUrl(value) {
+      return /^(https?:|data:image\\/)/i.test(value);
+    }
+
+    function isImageUrl(value) {
+      return /\\.(avif|gif|jpe?g|png|svg|webp)(\\?.*)?$/i.test(value);
+    }
+
+    function isVideoUrl(value) {
+      return /\\.(mp4|m4v|mov|ogg|ogv|webm)(\\?.*)?$/i.test(value);
+    }
+
+    function isAudioUrl(value) {
+      return /\\.(aac|flac|m4a|mp3|oga|ogg|opus|wav)(\\?.*)?$/i.test(value);
+    }
+
+    function isPdfUrl(value) {
+      return /\\.pdf(\\?.*)?$/i.test(value);
+    }
+
+    function getYoutubeId(value) {
+      try {
+        const url = new URL(value);
+        if (url.hostname === 'youtu.be') return url.pathname.slice(1).split('/')[0] || '';
+        if (!/(^|\\.)youtube\\.com$/i.test(url.hostname)) return '';
+        if (url.pathname === '/watch') return url.searchParams.get('v') || '';
+        const parts = url.pathname.split('/').filter(Boolean);
+        if (parts[0] === 'embed' || parts[0] === 'shorts') return parts[1] || '';
+        return '';
+      } catch (_) {
+        return '';
+      }
+    }
+
+    function getVimeoId(value) {
+      try {
+        const url = new URL(value);
+        if (!/(^|\\.)vimeo\\.com$/i.test(url.hostname)) return '';
+        const id = url.pathname.split('/').filter(part => /^\\d+$/.test(part)).pop();
+        return id || '';
+      } catch (_) {
+        return '';
+      }
+    }
+
+    function getCodeLanguage(code) {
+      const match = Array.from(code.classList).map(name => name.match(/^language-(.+)$/)).find(Boolean);
+      return match ? match[1] : '';
+    }
+
+    function cleanCaption(text) {
+      const caption = (text || '').trim();
+      if (!caption || /^(image|photo|graphic|video|audio|pdf)$/i.test(caption)) return '';
+      return caption;
+    }
+
+    function getDomain(value) {
+      try {
+        return new URL(value).hostname.replace(/^www\\./, '');
+      } catch (_) {
+        return '';
+      }
+    }
+
+    function deriveTitleFromMarkdown(markdown) {
+      const match = (markdown || '').match(/^#\\s+(.+)$/m);
+      return match ? match[1].trim() : '';
+    }
+
+    function normalizeText(value) {
+      return (value || '').toLowerCase().replace(/\\s+/g, ' ').trim();
+    }
+
+    function slugify(value) {
+      return normalizeText(value)
+        .replace(/[^a-z0-9\\s-]/g, '')
+        .replace(/\\s+/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '');
     }
 
     function setupScrollTracking() {
@@ -2432,7 +3267,7 @@ ${getBookmarkReaderOfflineClientScript()}
     }
 
     function setupTextSelection() {
-      const content = document.getElementById('markdownContent');
+      const content = document.getElementById('articleBody');
       if (!content) return;
 
       // Desktop: mouseup
@@ -2449,10 +3284,13 @@ ${getBookmarkReaderOfflineClientScript()}
     }
 
     function handleTextSelection(e) {
+      const content = document.getElementById('articleBody');
       const selection = window.getSelection();
+      if (!selection || !selection.anchorNode || !selection.focusNode) return;
       const text = selection.toString().trim();
 
       if (text.length > 0) {
+        if (!content || !content.contains(selection.anchorNode) || !content.contains(selection.focusNode)) return;
         selectedText = text;
         try {
           selectionRange = selection.getRangeAt(0).cloneRange();
@@ -2517,14 +3355,13 @@ ${getBookmarkReaderOfflineClientScript()}
 
       // Store range before async operation
       const rangeToHighlight = selectionRange.cloneRange();
+      const content = document.getElementById('articleBody');
 
-      // Find offset in raw markdown (not rendered HTML)
-      const startOffset = rawMarkdown.indexOf(selectedText);
-      if (startOffset === -1) {
-        console.warn('Could not find selected text in raw markdown');
+      if (!content || !content.contains(rangeToHighlight.commonAncestorContainer)) {
         hideSelectionPopup();
         return;
       }
+      const startOffset = getTextOffset(content, rangeToHighlight);
       const endOffset = startOffset + selectedText.length;
 
       try {
@@ -2546,11 +3383,7 @@ ${getBookmarkReaderOfflineClientScript()}
 
           // Highlight the selected text with proper ID and click handler
           try {
-            const highlight = document.createElement('mark');
-            highlight.className = 'annotation-highlight';
-            highlight.setAttribute('data-annotation-id', data.annotation.id);
-            highlight.onclick = () => scrollToAnnotationInPanel(data.annotation.id);
-            rangeToHighlight.surroundContents(highlight);
+            wrapTextRange(content, startOffset, endOffset, data.annotation.id);
           } catch (e) {
             console.warn('Could not highlight selection:', e);
           }
@@ -2571,7 +3404,7 @@ ${getBookmarkReaderOfflineClientScript()}
         annotations = annotations.filter(a => a.id !== id);
 
         // Remove highlight mark from DOM
-        const content = document.getElementById('markdownContent');
+        const content = document.getElementById('articleBody');
         if (content) {
           const marks = content.querySelectorAll('[data-annotation-id="' + id + '"]');
           marks.forEach(mark => {
@@ -2609,7 +3442,7 @@ ${getBookmarkReaderOfflineClientScript()}
     }
 
     function scrollToHighlightedText(annotationId) {
-      const content = document.getElementById('markdownContent');
+      const content = document.getElementById('articleBody');
       if (!content) return;
 
       const highlight = content.querySelector(\`[data-annotation-id="\${annotationId}"]\`);
@@ -2659,6 +3492,52 @@ ${getBookmarkReaderOfflineClientScript()}
       return div.innerHTML;
     }
 
+    function escapeAttribute(text) {
+      return escapeHtml(text).replace(/"/g, '&quot;');
+    }
+
+    function loadPreferences() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
+        readerPrefs = {
+          fontSize: clampNumber(saved.fontSize, 14, 22, 16),
+          width: widthSteps.includes(saved.width) ? saved.width : '80ch'
+        };
+      } catch (_) {}
+    }
+
+    function savePreferences() {
+      try {
+        localStorage.setItem(PREF_KEY, JSON.stringify(readerPrefs));
+      } catch (_) {}
+    }
+
+    function applyPreferences() {
+      document.documentElement.style.setProperty('--reader-font-size', readerPrefs.fontSize + 'px');
+      document.documentElement.style.setProperty('--content-width', readerPrefs.width);
+      const widthBtn = document.getElementById('widthBtn');
+      if (widthBtn) widthBtn.title = 'Line width ' + readerPrefs.width;
+    }
+
+    function clampNumber(value, min, max, fallback) {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return fallback;
+      return Math.min(max, Math.max(min, numeric));
+    }
+
+    function adjustFontSize(delta) {
+      readerPrefs.fontSize = clampNumber(readerPrefs.fontSize + delta, 14, 22, 16);
+      applyPreferences();
+      savePreferences();
+    }
+
+    function cycleWidth() {
+      const current = widthSteps.indexOf(readerPrefs.width);
+      readerPrefs.width = widthSteps[(current + 1) % widthSteps.length];
+      applyPreferences();
+      savePreferences();
+    }
+
     function updateActionButtons() {
       const readBtn = document.getElementById('readBtn');
       const favBtn = document.getElementById('favBtn');
@@ -2701,7 +3580,12 @@ ${getBookmarkReaderOfflineClientScript()}
     });
     document.getElementById('readBtn').addEventListener('click', toggleReadStatus);
     document.getElementById('favBtn').addEventListener('click', toggleFavouriteStatus);
+    document.getElementById('fontDownBtn').addEventListener('click', () => adjustFontSize(-1));
+    document.getElementById('fontUpBtn').addEventListener('click', () => adjustFontSize(1));
+    document.getElementById('widthBtn').addEventListener('click', cycleWidth);
 
+    loadPreferences();
+    applyPreferences();
     loadContent();
   </script>
 </body>
