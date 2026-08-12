@@ -2,6 +2,7 @@ export interface Env {
   NIKK_BOOKMARK_PROGRESS: KVNamespace;
   NIKK_BOOKMARK_ANNOTATION: KVNamespace;
   BOOKMARK_BUCKET: R2Bucket;
+  ARTICLE_IMAGES: R2Bucket;
   FIRECRAWL_API_KEY: string;
   POLICY_AUD: string;
   TEAM_DOMAIN: string;
@@ -27,6 +28,7 @@ export interface BookmarkEntry {
 export interface StoredBookmark {
   url: string;
   scrapedAt: string;
+  imageMigration?: ArticleImageMigration;
   firecrawlResponse: {
     success: boolean;
     data?: {
@@ -45,6 +47,26 @@ export interface StoredBookmark {
     };
     error?: string;
   };
+}
+
+export interface ArticleImageMigration {
+  version: number;
+  normalizedAt: string;
+  status: 'complete' | 'partial' | 'failed';
+  images: ArticleImageReference[];
+  failures: ArticleImageFailure[];
+}
+
+export interface ArticleImageReference {
+  sourceUrl: string;
+  mediaUrl: string;
+  objectKey?: string;
+  status: 'uploaded' | 'already-present' | 'skipped' | 'dry-run';
+}
+
+export interface ArticleImageFailure {
+  sourceUrl: string;
+  error: string;
 }
 
 export interface ReadingProgress {

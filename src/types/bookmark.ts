@@ -7,21 +7,42 @@ export interface BookmarkMetadata {
   url?: string;
   sourceURL?: string;
   ogImage?: string;
+  updatedTime?: string;
+  publishedTime?: string;
+  [key: string]: unknown;
 }
 
 export interface BookmarkData {
-  markdown: string;
-  metadata: BookmarkMetadata;
+  markdown?: string;
+  html?: string;
+  rawHtml?: string;
+  metadata?: BookmarkMetadata;
 }
 
 export interface FirecrawlResponse {
   success: boolean;
-  data: BookmarkData;
+  data?: BookmarkData;
+  error?: string;
 }
 
 export interface BookmarkJson {
   url: string;
   scrapedAt: string;
+  imageMigration?: {
+    version: number;
+    normalizedAt: string;
+    status: 'complete' | 'partial' | 'failed';
+    images: Array<{
+      sourceUrl: string;
+      mediaUrl: string;
+      objectKey?: string;
+      status: 'uploaded' | 'already-present' | 'skipped' | 'dry-run';
+    }>;
+    failures: Array<{
+      sourceUrl: string;
+      error: string;
+    }>;
+  };
   firecrawlResponse: FirecrawlResponse;
 }
 
