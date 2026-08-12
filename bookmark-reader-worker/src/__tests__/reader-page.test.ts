@@ -1,5 +1,7 @@
 import { env, SELF } from 'cloudflare:test';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+
+const READER_CONFIG_KEY = '__reader_config_v1__';
 
 describe('Reader page', () => {
   it('serves the enhanced markdown reader shell', async () => {
@@ -13,8 +15,15 @@ describe('Reader page', () => {
     expect(html).toContain('articleBody');
     expect(html).toContain('media-embed');
     expect(html).toContain('bookmark-reader-preferences');
+    expect(html).toContain('/api/config');
+    expect(html).toContain('readerConfigToggle');
+    expect(html).toContain('readerConfigPanel');
+    expect(html).toContain('data-theme-option="dracula"');
+    expect(html).toContain('data-font-group="Serif"');
+    expect(html).toContain('data-font-option="source-serif"');
     expect(html).toContain('--content-width: 80ch');
     expect(html).toContain('--accent: #fabd2f');
+    expect(html).toContain('--reader-font-family');
   });
 
   it('returns bookmark content rendered by the server markdown pipeline', async () => {
@@ -55,5 +64,75 @@ describe('Reader page', () => {
     expect(data.renderedHtml).toContain('<table>');
     expect(data.renderedHtml).toContain('<video controls>');
     expect(data.renderedHtml).toContain('type="video/webm"');
+  });
+
+  describe('reader config API', () => {
+    beforeEach(async () => {
+      await env.NIKK_BOOKMARK_PROGRESS.delete(READER_CONFIG_KEY);
+    });
+
+    it('returns the default global reader config', async () => {
+      const response = await SELF.fetch('https://example.com/api/config');
+
+      expect(response.status).toBe(200);
+      const data = await response.json() as { config: Record<string, unknown> };
+      expect(data.config).toMatchObject({
+        theme: 'gruvbox-dark',
+        fontStyle: 'jetbrains-mono',
+        fontSize: 16,
+        readerWidth: '80ch',
+        updatedAt: '',
+      });
+    });
+
+    it('persists valid global reader config', async () => {
+      const response = await SELF.fetch('https://example.com/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          theme: 'dracula',
+          fontStyle: 'source-serif',
+          fontSize: 19,
+          readerWidth: '92ch',
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json() as { success: boolean; config: Record<string, unknown> };
+      expect(data.success).toBe(true);
+      expect(data.config).toMatchObject({
+        theme: 'dracula',
+        fontStyle: 'source-serif',
+        fontSize: 19,
+        readerWidth: '92ch',
+      });
+      expect(typeof data.config.updatedAt).toBe('string');
+
+      const stored = await env.NIKK_BOOKMARK_PROGRESS.get(READER_CONFIG_KEY);
+      expect(stored).not.toBeNull();
+      expect(JSON.parse(stored!)).toMatchObject(data.config);
+    });
+
+    it('normalizes unsupported reader config values', async () => {
+      const response = await SELF.fetch('https://example.com/api/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          theme: 'unknown',
+          fontStyle: 'comic-sans',
+          fontSize: 99,
+          readerWidth: 'full',
+        }),
+      });
+
+      expect(response.status).toBe(200);
+      const data = await response.json() as { config: Record<string, unknown> };
+      expect(data.config).toMatchObject({
+        theme: 'gruvbox-dark',
+        fontStyle: 'jetbrains-mono',
+        fontSize: 22,
+        readerWidth: '80ch',
+      });
+    });
   });
 });

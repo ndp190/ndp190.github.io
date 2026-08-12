@@ -78,6 +78,38 @@ export interface ReadingProgress {
   isFavourite: boolean;
 }
 
+export type ReaderTheme =
+  | 'gruvbox-dark'
+  | 'solarized-light'
+  | 'solarized-dark'
+  | 'dracula'
+  | 'nord'
+  | 'tokyo-night'
+  | 'catppuccin-latte'
+  | 'catppuccin-mocha';
+
+export type ReaderFontStyle =
+  | 'source-serif'
+  | 'merriweather'
+  | 'literata'
+  | 'inter'
+  | 'atkinson'
+  | 'jetbrains-mono'
+  | 'ibm-plex-mono'
+  | 'system-serif'
+  | 'system-sans'
+  | 'system-mono';
+
+export type ReaderWidth = '72ch' | '80ch' | '92ch' | '104ch';
+
+export interface ReaderConfig {
+  theme: ReaderTheme;
+  fontStyle: ReaderFontStyle;
+  fontSize: number;
+  readerWidth: ReaderWidth;
+  updatedAt: string;
+}
+
 export interface Annotation {
   id: string;
   bookmarkKey: string;

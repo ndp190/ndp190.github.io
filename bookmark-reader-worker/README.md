@@ -50,8 +50,11 @@ npm install
 ### 5. Development
 
 ```bash
-npm run dev
+npm run dev:local
+npm run seed:local
 ```
+
+Run `seed:local` after the local Worker is running. It writes `bookmark/manifest.json` and mock articles into the simulated `local-nikk` R2 bucket; without it, the library page will show `Manifest not found`.
 
 ### 6. Deploy
 

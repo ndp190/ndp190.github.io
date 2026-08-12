@@ -9,12 +9,37 @@ import rehypeKatex from 'rehype-katex';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeStringify from 'rehype-stringify';
 import type { Schema } from 'hast-util-sanitize';
-import type { Env, ReadingProgress, Annotation, AnnotationList, StoredBookmark, BookmarkEntry, BookmarkManifest } from './types';
+import type { Env, ReadingProgress, ReaderConfig, ReaderFontStyle, ReaderTheme, ReaderWidth, Annotation, AnnotationList, StoredBookmark, BookmarkEntry, BookmarkManifest } from './types';
 import { backfillBookmarkedArticleImages, normalizeArticleImages } from './imageProcessing';
 import { BOOKMARK_READER_PNG_ICONS } from './icons';
 
 const MANIFEST_KEY = 'bookmark/manifest.json';
+const READER_CONFIG_KEY = '__reader_config_v1__';
 const FIRECRAWL_API_URL = 'https://api.firecrawl.dev/v2/scrape';
+
+const READER_THEMES: ReaderTheme[] = [
+  'gruvbox-dark',
+  'solarized-light',
+  'solarized-dark',
+  'dracula',
+  'nord',
+  'tokyo-night',
+  'catppuccin-latte',
+  'catppuccin-mocha',
+];
+const READER_FONT_STYLES: ReaderFontStyle[] = [
+  'source-serif',
+  'merriweather',
+  'literata',
+  'inter',
+  'atkinson',
+  'jetbrains-mono',
+  'ibm-plex-mono',
+  'system-serif',
+  'system-sans',
+  'system-mono',
+];
+const READER_WIDTHS: ReaderWidth[] = ['72ch', '80ch', '92ch', '104ch'];
 
 interface FirecrawlResponse {
   success: boolean;
@@ -118,6 +143,59 @@ export default {
   },
 };
 
+function getDefaultReaderConfig(updatedAt = ''): ReaderConfig {
+  return {
+    theme: 'gruvbox-dark',
+    fontStyle: 'jetbrains-mono',
+    fontSize: 16,
+    readerWidth: '80ch',
+    updatedAt,
+  };
+}
+
+function normalizeReaderConfig(value: unknown, updatedAtOverride?: string): ReaderConfig {
+  const source = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  const defaults = getDefaultReaderConfig();
+  const theme = typeof source.theme === 'string' && READER_THEMES.includes(source.theme as ReaderTheme)
+    ? source.theme as ReaderTheme
+    : defaults.theme;
+  const fontStyle = typeof source.fontStyle === 'string' && READER_FONT_STYLES.includes(source.fontStyle as ReaderFontStyle)
+    ? source.fontStyle as ReaderFontStyle
+    : defaults.fontStyle;
+  const readerWidth = typeof source.readerWidth === 'string' && READER_WIDTHS.includes(source.readerWidth as ReaderWidth)
+    ? source.readerWidth as ReaderWidth
+    : typeof source.width === 'string' && READER_WIDTHS.includes(source.width as ReaderWidth)
+      ? source.width as ReaderWidth
+      : defaults.readerWidth;
+  const updatedAt = updatedAtOverride
+    ?? (typeof source.updatedAt === 'string' ? source.updatedAt : defaults.updatedAt);
+
+  return {
+    theme,
+    fontStyle,
+    fontSize: clampReaderNumber(source.fontSize, 14, 22, defaults.fontSize),
+    readerWidth,
+    updatedAt,
+  };
+}
+
+function clampReaderNumber(value: unknown, min: number, max: number, fallback: number): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(numeric)));
+}
+
+async function getReaderConfig(env: Env): Promise<ReaderConfig> {
+  const saved = await env.NIKK_BOOKMARK_PROGRESS.get(READER_CONFIG_KEY);
+  if (!saved) return getDefaultReaderConfig();
+
+  try {
+    return normalizeReaderConfig(JSON.parse(saved));
+  } catch (_) {
+    return getDefaultReaderConfig();
+  }
+}
+
 async function handleApiRoute(request: Request, env: Env, path: string): Promise<Response> {
   // GET /api/bookmarks - fetch manifest and enrich with progress
   if (path === '/api/bookmarks' && request.method === 'GET') {
@@ -142,6 +220,30 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       return jsonResponse({ error: message }, 500);
+    }
+  }
+
+  // GET /api/config - get global reader preferences
+  if (path === '/api/config' && request.method === 'GET') {
+    try {
+      const config = await getReaderConfig(env);
+      return jsonResponse({ config });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return jsonResponse({ error: message }, 500);
+    }
+  }
+
+  // POST /api/config - save global reader preferences
+  if (path === '/api/config' && request.method === 'POST') {
+    try {
+      const body = await request.json();
+      const config = normalizeReaderConfig(body, new Date().toISOString());
+      await env.NIKK_BOOKMARK_PROGRESS.put(READER_CONFIG_KEY, JSON.stringify(config));
+      return jsonResponse({ success: true, config });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return jsonResponse({ error: message }, 400);
     }
   }
 
@@ -913,6 +1015,7 @@ function isOfflineDataRequest(url) {
   return url.origin === self.location.origin
     && (
       url.pathname === '/api/bookmarks'
+      || url.pathname === '/api/config'
       || url.pathname.startsWith('/api/bookmark/')
       || url.pathname.startsWith('/api/annotations/')
       || url.pathname.startsWith('/api/progress/')
@@ -1835,13 +1938,15 @@ function getReadingPageHtml(key: string): string {
   ${getPwaHeadTags()}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap&subset=vietnamese" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Literata:opsz,wght@7..72,400;7..72,500;7..72,600;7..72,700&family=Merriweather:wght@400;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600;8..60,700&display=swap&subset=vietnamese" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
   <script>
     (function () {
       try {
         const prefs = JSON.parse(localStorage.getItem('bookmark-reader-preferences') || '{}');
-        if (prefs.width) document.documentElement.style.setProperty('--content-width', prefs.width);
+        if (prefs.theme) document.documentElement.dataset.theme = prefs.theme;
+        if (prefs.fontStyle) document.documentElement.dataset.fontStyle = prefs.fontStyle;
+        if (prefs.readerWidth || prefs.width) document.documentElement.style.setProperty('--content-width', prefs.readerWidth || prefs.width);
         if (prefs.fontSize) document.documentElement.style.setProperty('--reader-font-size', prefs.fontSize + 'px');
       } catch (_) {}
     })();
@@ -1865,11 +1970,14 @@ function getReadingPageHtml(key: string): string {
       --code-bg: rgba(146, 131, 116, 0.13);
       --code-ink: #ebdbb2;
       --shadow: none;
+      --ui-font-family: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+      --mono-font-family: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+      --reader-font-family: var(--mono-font-family);
       --content-width: 80ch;
       --reader-font-size: 1rem;
       --topbar-height: 64px;
     }
-    html[data-theme="dark"] {
+    html[data-theme="gruvbox-dark"] {
       color-scheme: dark;
       --bg: #282828;
       --surface: #3c3836;
@@ -1887,13 +1995,149 @@ function getReadingPageHtml(key: string): string {
       --code-ink: #ebdbb2;
       --shadow: none;
     }
+    html[data-theme="solarized-light"] {
+      color-scheme: light;
+      --bg: #fdf6e3;
+      --surface: #eee8d5;
+      --surface-muted: #e1d8bd;
+      --ink: #073642;
+      --ink-soft: #586e75;
+      --muted: #657b83;
+      --line: #d6cbb0;
+      --accent: #b58900;
+      --accent-strong: #cb4b16;
+      --accent-2: #268bd2;
+      --mark: rgba(42, 161, 152, 0.28);
+      --danger: #dc322f;
+      --code-bg: rgba(101, 123, 131, 0.13);
+      --code-ink: #073642;
+      --shadow: 0 18px 42px rgba(7, 54, 66, 0.16);
+    }
+    html[data-theme="solarized-dark"] {
+      color-scheme: dark;
+      --bg: #002b36;
+      --surface: #073642;
+      --surface-muted: #0f3a45;
+      --ink: #eee8d5;
+      --ink-soft: #93a1a1;
+      --muted: #839496;
+      --line: #164650;
+      --accent: #b58900;
+      --accent-strong: #cb4b16;
+      --accent-2: #2aa198;
+      --mark: rgba(42, 161, 152, 0.34);
+      --danger: #dc322f;
+      --code-bg: rgba(101, 123, 131, 0.14);
+      --code-ink: #eee8d5;
+      --shadow: 0 18px 42px rgba(0, 20, 26, 0.34);
+    }
+    html[data-theme="dracula"] {
+      color-scheme: dark;
+      --bg: #282a36;
+      --surface: #343746;
+      --surface-muted: #44475a;
+      --ink: #f8f8f2;
+      --ink-soft: #e6e6f0;
+      --muted: #a4a7c0;
+      --line: #44475a;
+      --accent: #bd93f9;
+      --accent-strong: #ff79c6;
+      --accent-2: #8be9fd;
+      --mark: rgba(80, 250, 123, 0.26);
+      --danger: #ff5555;
+      --code-bg: rgba(68, 71, 90, 0.55);
+      --code-ink: #f8f8f2;
+      --shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+    }
+    html[data-theme="nord"] {
+      color-scheme: dark;
+      --bg: #2e3440;
+      --surface: #3b4252;
+      --surface-muted: #434c5e;
+      --ink: #eceff4;
+      --ink-soft: #d8dee9;
+      --muted: #aeb9ca;
+      --line: #4c566a;
+      --accent: #88c0d0;
+      --accent-strong: #b48ead;
+      --accent-2: #a3be8c;
+      --mark: rgba(163, 190, 140, 0.3);
+      --danger: #bf616a;
+      --code-bg: rgba(76, 86, 106, 0.4);
+      --code-ink: #eceff4;
+      --shadow: 0 18px 42px rgba(17, 24, 39, 0.3);
+    }
+    html[data-theme="tokyo-night"] {
+      color-scheme: dark;
+      --bg: #1a1b26;
+      --surface: #24283b;
+      --surface-muted: #2f3549;
+      --ink: #c0caf5;
+      --ink-soft: #a9b1d6;
+      --muted: #787c99;
+      --line: #414868;
+      --accent: #7aa2f7;
+      --accent-strong: #bb9af7;
+      --accent-2: #2ac3de;
+      --mark: rgba(42, 195, 222, 0.28);
+      --danger: #f7768e;
+      --code-bg: rgba(65, 72, 104, 0.38);
+      --code-ink: #c0caf5;
+      --shadow: 0 18px 42px rgba(5, 8, 20, 0.4);
+    }
+    html[data-theme="catppuccin-latte"] {
+      color-scheme: light;
+      --bg: #eff1f5;
+      --surface: #e6e9ef;
+      --surface-muted: #dce0e8;
+      --ink: #4c4f69;
+      --ink-soft: #5c5f77;
+      --muted: #6c6f85;
+      --line: #ccd0da;
+      --accent: #8839ef;
+      --accent-strong: #d20f39;
+      --accent-2: #1e66f5;
+      --mark: rgba(64, 160, 43, 0.24);
+      --danger: #d20f39;
+      --code-bg: rgba(204, 208, 218, 0.45);
+      --code-ink: #4c4f69;
+      --shadow: 0 18px 42px rgba(76, 79, 105, 0.16);
+    }
+    html[data-theme="catppuccin-mocha"] {
+      color-scheme: dark;
+      --bg: #1e1e2e;
+      --surface: #313244;
+      --surface-muted: #45475a;
+      --ink: #cdd6f4;
+      --ink-soft: #bac2de;
+      --muted: #9399b2;
+      --line: #585b70;
+      --accent: #cba6f7;
+      --accent-strong: #f38ba8;
+      --accent-2: #89b4fa;
+      --mark: rgba(166, 227, 161, 0.26);
+      --danger: #f38ba8;
+      --code-bg: rgba(69, 71, 90, 0.44);
+      --code-ink: #cdd6f4;
+      --shadow: 0 18px 42px rgba(12, 12, 22, 0.42);
+    }
+    html[data-font-style="source-serif"] { --reader-font-family: 'Source Serif 4', Georgia, 'Times New Roman', serif; }
+    html[data-font-style="merriweather"] { --reader-font-family: 'Merriweather', Georgia, 'Times New Roman', serif; }
+    html[data-font-style="literata"] { --reader-font-family: 'Literata', Georgia, 'Times New Roman', serif; }
+    html[data-font-style="inter"] { --reader-font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    html[data-font-style="atkinson"] { --reader-font-family: 'Atkinson Hyperlegible', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    html[data-font-style="jetbrains-mono"] { --reader-font-family: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', Menlo, monospace; }
+    html[data-font-style="ibm-plex-mono"] { --reader-font-family: 'IBM Plex Mono', 'JetBrains Mono', 'SF Mono', Menlo, monospace; }
+    html[data-font-style="system-serif"] { --reader-font-family: Georgia, Cambria, 'Times New Roman', Times, serif; }
+    html[data-font-style="system-sans"] { --reader-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+    html[data-font-style="system-mono"] { --reader-font-family: 'SF Mono', Menlo, Monaco, Consolas, 'Liberation Mono', monospace; }
     html, body {
       overflow-x: hidden;
       max-width: 100vw;
       scroll-behavior: smooth;
     }
     body {
-      font-family: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+      font-family: var(--ui-font-family);
       font-weight: 500;
       background: var(--bg);
       color: var(--ink);
@@ -1961,8 +2205,16 @@ function getReadingPageHtml(key: string): string {
       flex: 0 0 auto;
     }
     .header-btn:hover, .setting-btn:hover { border-color: var(--accent); color: var(--accent-strong); background: var(--surface-muted); }
-    .header-btn:focus-visible, .setting-btn:focus-visible, .back-btn:focus-visible, .annotation-toggle:focus-visible {
-      outline: 3px solid rgba(250, 189, 47, 0.42);
+    .header-btn:focus-visible,
+    .setting-btn:focus-visible,
+    .back-btn:focus-visible,
+    .annotation-toggle:focus-visible,
+    .reader-config-toggle:focus-visible,
+    .reader-config-close:focus-visible,
+    .theme-option:focus-visible,
+    .font-option:focus-visible,
+    .config-step-btn:focus-visible {
+      outline: 3px solid var(--accent);
       outline-offset: 3px;
     }
     .header-btn.active {
@@ -2027,10 +2279,11 @@ function getReadingPageHtml(key: string): string {
     .reader-article {
       max-width: var(--content-width);
       margin: 0 auto;
+      font-family: var(--reader-font-family);
     }
     .article-header {
       margin: 0.5rem auto 1.25rem;
-      max-width: 80ch;
+      max-width: var(--content-width);
       color: var(--ink-soft);
     }
     .article-kicker {
@@ -2071,8 +2324,8 @@ function getReadingPageHtml(key: string): string {
 
     .article-body {
       margin: 0.5rem auto 1rem;
-      max-width: 80ch;
-      font-family: inherit;
+      max-width: var(--content-width);
+      font-family: var(--reader-font-family);
       font-size: var(--reader-font-size);
       line-height: 1.75;
       color: var(--ink);
@@ -2164,6 +2417,7 @@ function getReadingPageHtml(key: string): string {
     .article-body pre {
       background: var(--code-bg);
       color: var(--code-ink);
+      font-family: var(--mono-font-family);
       border-left: 3px solid var(--accent-2);
       border-radius: 0 4px 4px 0;
       padding: 1rem;
@@ -2188,7 +2442,7 @@ function getReadingPageHtml(key: string): string {
     .article-body code,
     .article-body kbd,
     .article-body samp {
-      font-family: inherit;
+      font-family: var(--mono-font-family);
       font-size: 0.9em;
     }
     .article-body pre code { color: inherit; background: transparent; padding: 0; }
@@ -2358,6 +2612,211 @@ function getReadingPageHtml(key: string): string {
       color: var(--muted);
       font-family: inherit;
       padding: 2rem 0;
+    }
+
+    /* Reader settings */
+    .reader-config-toggle {
+      position: fixed;
+      right: 1rem;
+      bottom: 4.75rem;
+      width: 48px;
+      height: 48px;
+      background: var(--surface);
+      color: var(--accent);
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      cursor: pointer;
+      font-family: var(--ui-font-family);
+      font-size: 1rem;
+      font-weight: 800;
+      z-index: 101;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: var(--shadow);
+    }
+    .reader-config-toggle:hover,
+    .reader-config-toggle.active {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: var(--surface);
+    }
+    .reader-config-panel {
+      position: fixed;
+      right: 0;
+      top: var(--topbar-height);
+      bottom: 0;
+      width: min(420px, 94vw);
+      background: var(--surface);
+      border-left: 1px solid var(--line);
+      padding: 1rem;
+      overflow-y: auto;
+      transform: translateX(100%);
+      transition: transform 0.3s;
+      z-index: 100;
+      box-shadow: -18px 0 38px rgba(0, 0, 0, 0.16);
+    }
+    .reader-config-panel.open { transform: translateX(0); }
+    .reader-config-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    .reader-config-head h3 {
+      color: var(--ink);
+      font-size: 1rem;
+      line-height: 1.2;
+      margin: 0;
+    }
+    .reader-config-close {
+      width: 32px;
+      height: 32px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-family: var(--ui-font-family);
+      font-size: 1rem;
+      font-weight: 800;
+    }
+    .reader-config-close:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--surface-muted);
+    }
+    .config-section {
+      padding: 0.85rem 0;
+      border-top: 1px solid var(--line);
+    }
+    .config-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      color: var(--ink-soft);
+      font-size: 0.82rem;
+      font-weight: 800;
+      margin-bottom: 0.65rem;
+    }
+    .config-value {
+      color: var(--muted);
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+    .theme-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.5rem;
+    }
+    .theme-option,
+    .font-option {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(146, 131, 116, 0.08);
+      color: var(--ink);
+      cursor: pointer;
+      font-family: var(--ui-font-family);
+      text-align: left;
+      transition: border-color 0.2s, background 0.2s, color 0.2s;
+    }
+    .theme-option {
+      min-height: 54px;
+      padding: 0.55rem;
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      align-items: center;
+      gap: 0.55rem;
+      font-size: 0.78rem;
+      font-weight: 800;
+    }
+    .theme-option:hover,
+    .theme-option.active,
+    .font-option:hover,
+    .font-option.active {
+      border-color: var(--accent);
+      background: var(--surface-muted);
+      color: var(--accent);
+    }
+    .theme-swatch {
+      width: 42px;
+      height: 30px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+    }
+    .theme-swatch span { display: block; }
+    .font-groups {
+      display: grid;
+      gap: 0.7rem;
+    }
+    .font-group {
+      display: grid;
+      gap: 0.4rem;
+    }
+    .font-group-label {
+      color: var(--muted);
+      font-size: 0.72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+    .font-options {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.45rem;
+    }
+    .font-option {
+      min-height: 38px;
+      padding: 0.45rem 0.55rem;
+      font-size: 0.78rem;
+      font-weight: 800;
+    }
+    .font-option[data-font-option="source-serif"] { font-family: 'Source Serif 4', Georgia, serif; }
+    .font-option[data-font-option="merriweather"] { font-family: 'Merriweather', Georgia, serif; }
+    .font-option[data-font-option="literata"] { font-family: 'Literata', Georgia, serif; }
+    .font-option[data-font-option="inter"] { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; }
+    .font-option[data-font-option="atkinson"] { font-family: 'Atkinson Hyperlegible', -apple-system, BlinkMacSystemFont, sans-serif; }
+    .font-option[data-font-option="jetbrains-mono"] { font-family: 'JetBrains Mono', monospace; }
+    .font-option[data-font-option="ibm-plex-mono"] { font-family: 'IBM Plex Mono', monospace; }
+    .font-option[data-font-option^="system-"] { font-family: var(--ui-font-family); }
+    .config-stepper {
+      display: grid;
+      grid-template-columns: 42px 1fr 42px;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .config-step-btn {
+      width: 42px;
+      height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: rgba(146, 131, 116, 0.08);
+      color: var(--ink);
+      cursor: pointer;
+      font-family: var(--ui-font-family);
+      font-size: 1rem;
+      font-weight: 800;
+    }
+    .config-step-btn:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--surface-muted);
+    }
+    .config-step-value {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--ink);
+      font-size: 0.82rem;
+      font-weight: 800;
+      background: rgba(146, 131, 116, 0.08);
     }
 
     /* Annotation styles */
@@ -2579,15 +3038,6 @@ function getReadingPageHtml(key: string): string {
       </button>
       <button class="header-btn fav-btn" id="favBtn" title="Add to favourites">★</button>
       <button class="header-btn read-btn" id="readBtn" title="Mark as read">✓</button>
-      <div class="reader-settings" aria-label="Reader settings">
-        <button class="setting-btn" id="fontDownBtn" title="Decrease text size" aria-label="Decrease text size">A-</button>
-        <button class="setting-btn" id="fontUpBtn" title="Increase text size" aria-label="Increase text size">A+</button>
-        <button class="setting-btn" id="widthBtn" title="Change line width" aria-label="Change line width">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M4 8h16M4 16h16M8 4L4 8l4 4M16 12l4 4-4 4"/>
-          </svg>
-        </button>
-      </div>
     </div>
   </header>
 
@@ -2600,11 +3050,119 @@ function getReadingPageHtml(key: string): string {
     </div>
   </div>
 
+  <button class="reader-config-toggle" id="readerConfigToggle" title="Reader settings" aria-label="Reader settings" aria-expanded="false" aria-controls="readerConfigPanel">Aa</button>
+
   <button class="annotation-toggle" id="annotationToggle" title="Annotations">
     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
     </svg>
   </button>
+
+  <div class="reader-config-panel" id="readerConfigPanel" aria-label="Reader settings">
+    <div class="reader-config-head">
+      <h3>Reader settings</h3>
+      <button class="reader-config-close" id="readerConfigClose" title="Close reader settings" aria-label="Close reader settings">x</button>
+    </div>
+
+    <section class="config-section">
+      <div class="config-label">
+        <span>Color theme</span>
+        <span class="config-value" id="themeValue">Gruvbox</span>
+      </div>
+      <div class="theme-grid" id="themeOptions">
+        <button class="theme-option" data-theme-option="gruvbox-dark" aria-pressed="false">
+          <span class="theme-swatch"><span style="background:#282828"></span><span style="background:#fabd2f"></span><span style="background:#83a598"></span></span>
+          <span>Gruvbox</span>
+        </button>
+        <button class="theme-option" data-theme-option="solarized-light" aria-pressed="false">
+          <span class="theme-swatch"><span style="background:#fdf6e3"></span><span style="background:#b58900"></span><span style="background:#268bd2"></span></span>
+          <span>Solarized light</span>
+        </button>
+        <button class="theme-option" data-theme-option="solarized-dark" aria-pressed="false">
+          <span class="theme-swatch"><span style="background:#002b36"></span><span style="background:#b58900"></span><span style="background:#2aa198"></span></span>
+          <span>Solarized dark</span>
+        </button>
+        <button class="theme-option" data-theme-option="dracula" aria-pressed="false">
+          <span class="theme-swatch"><span style="background:#282a36"></span><span style="background:#bd93f9"></span><span style="background:#ff79c6"></span></span>
+          <span>Dracula</span>
+        </button>
+        <button class="theme-option" data-theme-option="nord" aria-pressed="false">
+          <span class="theme-swatch"><span style="background:#2e3440"></span><span style="background:#88c0d0"></span><span style="background:#a3be8c"></span></span>
+          <span>Nord</span>
+        </button>
+        <button class="theme-option" data-theme-option="tokyo-night" aria-pressed="false">
+          <span class="theme-swatch"><span style="background:#1a1b26"></span><span style="background:#7aa2f7"></span><span style="background:#bb9af7"></span></span>
+          <span>Tokyo Night</span>
+        </button>
+        <button class="theme-option" data-theme-option="catppuccin-latte" aria-pressed="false">
+          <span class="theme-swatch"><span style="background:#eff1f5"></span><span style="background:#8839ef"></span><span style="background:#1e66f5"></span></span>
+          <span>Catppuccin latte</span>
+        </button>
+        <button class="theme-option" data-theme-option="catppuccin-mocha" aria-pressed="false">
+          <span class="theme-swatch"><span style="background:#1e1e2e"></span><span style="background:#cba6f7"></span><span style="background:#89b4fa"></span></span>
+          <span>Catppuccin mocha</span>
+        </button>
+      </div>
+    </section>
+
+    <section class="config-section">
+      <div class="config-label">
+        <span>Typeface</span>
+        <span class="config-value" id="fontValue">JetBrains Mono</span>
+      </div>
+      <div class="font-groups" id="fontOptions">
+        <div class="font-group" data-font-group="Serif">
+          <div class="font-group-label">Serif</div>
+          <div class="font-options">
+            <button class="font-option" data-font-option="source-serif" aria-pressed="false">Source Serif</button>
+            <button class="font-option" data-font-option="merriweather" aria-pressed="false">Merriweather</button>
+            <button class="font-option" data-font-option="literata" aria-pressed="false">Literata</button>
+            <button class="font-option" data-font-option="system-serif" aria-pressed="false">System serif</button>
+          </div>
+        </div>
+        <div class="font-group" data-font-group="Sans">
+          <div class="font-group-label">Sans</div>
+          <div class="font-options">
+            <button class="font-option" data-font-option="inter" aria-pressed="false">Inter</button>
+            <button class="font-option" data-font-option="atkinson" aria-pressed="false">Atkinson</button>
+            <button class="font-option" data-font-option="system-sans" aria-pressed="false">System sans</button>
+          </div>
+        </div>
+        <div class="font-group" data-font-group="Mono">
+          <div class="font-group-label">Mono</div>
+          <div class="font-options">
+            <button class="font-option" data-font-option="jetbrains-mono" aria-pressed="false">JetBrains Mono</button>
+            <button class="font-option" data-font-option="ibm-plex-mono" aria-pressed="false">IBM Plex Mono</button>
+            <button class="font-option" data-font-option="system-mono" aria-pressed="false">System mono</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="config-section">
+      <div class="config-label">
+        <span>Text size</span>
+        <span class="config-value" id="fontSizeValue">16px</span>
+      </div>
+      <div class="config-stepper">
+        <button class="config-step-btn" id="fontSizeDownBtn" title="Decrease text size" aria-label="Decrease text size">-</button>
+        <div class="config-step-value" id="fontSizeStepperValue">16px</div>
+        <button class="config-step-btn" id="fontSizeUpBtn" title="Increase text size" aria-label="Increase text size">+</button>
+      </div>
+    </section>
+
+    <section class="config-section">
+      <div class="config-label">
+        <span>Reader width</span>
+        <span class="config-value" id="readerWidthValue">Medium</span>
+      </div>
+      <div class="config-stepper">
+        <button class="config-step-btn" id="readerWidthDownBtn" title="Narrow reader width" aria-label="Narrow reader width">-</button>
+        <div class="config-step-value" id="readerWidthStepperValue">80ch</div>
+        <button class="config-step-btn" id="readerWidthUpBtn" title="Widen reader width" aria-label="Widen reader width">+</button>
+      </div>
+    </section>
+  </div>
 
   <div class="annotation-panel" id="annotationPanel">
     <h3>
@@ -2644,11 +3202,42 @@ ${getBookmarkReaderOfflineClientScript()}
     let rawHtml = '';
     let bookmarkUrl = '';
     const PREF_KEY = 'bookmark-reader-preferences';
-    const widthSteps = ['72ch', '80ch', '92ch', '104ch'];
-    let readerPrefs = {
-      fontSize: 16,
-      width: '80ch'
+    const themeOptions = {
+      'gruvbox-dark': 'Gruvbox',
+      'solarized-light': 'Solarized light',
+      'solarized-dark': 'Solarized dark',
+      'dracula': 'Dracula',
+      'nord': 'Nord',
+      'tokyo-night': 'Tokyo Night',
+      'catppuccin-latte': 'Catppuccin latte',
+      'catppuccin-mocha': 'Catppuccin mocha'
     };
+    const fontOptions = {
+      'source-serif': 'Source Serif',
+      'merriweather': 'Merriweather',
+      'literata': 'Literata',
+      'inter': 'Inter',
+      'atkinson': 'Atkinson',
+      'jetbrains-mono': 'JetBrains Mono',
+      'ibm-plex-mono': 'IBM Plex Mono',
+      'system-serif': 'System serif',
+      'system-sans': 'System sans',
+      'system-mono': 'System mono'
+    };
+    const readerWidthLabels = {
+      '72ch': 'Compact',
+      '80ch': 'Medium',
+      '92ch': 'Wide',
+      '104ch': 'Full'
+    };
+    const widthSteps = Object.keys(readerWidthLabels);
+    const defaultReaderPrefs = {
+      theme: 'gruvbox-dark',
+      fontStyle: 'jetbrains-mono',
+      fontSize: 16,
+      readerWidth: '80ch'
+    };
+    let readerPrefs = { ...defaultReaderPrefs };
 
     async function loadContent() {
       const content = document.getElementById('content');
@@ -2985,25 +3574,27 @@ ${getBookmarkReaderOfflineClientScript()}
     function renderMermaid(root) {
       if (!window.mermaid || !root.querySelector('.mermaid')) return;
       try {
+        const styles = getComputedStyle(document.documentElement);
+        const token = (name, fallback) => styles.getPropertyValue(name).trim() || fallback;
         window.mermaid.initialize({
           startOnLoad: false,
           securityLevel: 'strict',
-          theme: 'dark',
+          theme: 'base',
           themeVariables: {
-            primaryColor: '#fabd2f',
-            primaryTextColor: '#ebdbb2',
-            primaryBorderColor: '#fabd2f',
-            lineColor: '#ebdbb2',
-            secondaryColor: '#3c3836',
-            tertiaryColor: '#504945',
-            background: '#282828',
-            mainBkg: '#3c3836',
-            secondBkg: '#504945',
-            nodeBorder: '#fabd2f',
-            clusterBkg: '#3c3836',
-            clusterBorder: '#504945',
-            titleColor: '#fabd2f',
-            edgeLabelBackground: '#282828'
+            primaryColor: token('--surface-muted', '#504945'),
+            primaryTextColor: token('--ink', '#ebdbb2'),
+            primaryBorderColor: token('--accent', '#fabd2f'),
+            lineColor: token('--ink-soft', '#d5c4a1'),
+            secondaryColor: token('--surface', '#3c3836'),
+            tertiaryColor: token('--surface-muted', '#504945'),
+            background: token('--bg', '#282828'),
+            mainBkg: token('--surface', '#3c3836'),
+            secondBkg: token('--surface-muted', '#504945'),
+            nodeBorder: token('--accent', '#fabd2f'),
+            clusterBkg: token('--surface', '#3c3836'),
+            clusterBorder: token('--line', '#504945'),
+            titleColor: token('--accent', '#fabd2f'),
+            edgeLabelBackground: token('--bg', '#282828')
           },
           flowchart: {
             htmlLabels: true,
@@ -3471,6 +4062,7 @@ ${getBookmarkReaderOfflineClientScript()}
       if (!panel.classList.contains('open')) {
         panel.classList.add('open');
       }
+      closeReaderConfigPanel();
       const item = panel.querySelector(\`[data-annotation-id="\${annotationId}"]\`);
       if (item) {
         item.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -3480,7 +4072,9 @@ ${getBookmarkReaderOfflineClientScript()}
     }
 
     function togglePanel() {
-      document.getElementById('annotationPanel').classList.toggle('open');
+      const panel = document.getElementById('annotationPanel');
+      const isOpen = panel.classList.toggle('open');
+      if (isOpen) closeReaderConfigPanel();
     }
 
     document.getElementById('annotationToggle').addEventListener('click', togglePanel);
@@ -3496,46 +4090,150 @@ ${getBookmarkReaderOfflineClientScript()}
       return escapeHtml(text).replace(/"/g, '&quot;');
     }
 
-    function loadPreferences() {
+    function normalizeClientConfig(value) {
+      const source = value && typeof value === 'object' ? value : {};
+      const legacyWidth = source.readerWidth || source.width;
+      return {
+        theme: themeOptions[source.theme] ? source.theme : defaultReaderPrefs.theme,
+        fontStyle: fontOptions[source.fontStyle] ? source.fontStyle : defaultReaderPrefs.fontStyle,
+        fontSize: clampNumber(source.fontSize, 14, 22, defaultReaderPrefs.fontSize),
+        readerWidth: widthSteps.includes(legacyWidth) ? legacyWidth : defaultReaderPrefs.readerWidth
+      };
+    }
+
+    function loadLocalPreferences() {
       try {
         const saved = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
-        readerPrefs = {
-          fontSize: clampNumber(saved.fontSize, 14, 22, 16),
-          width: widthSteps.includes(saved.width) ? saved.width : '80ch'
-        };
+        readerPrefs = normalizeClientConfig({ ...readerPrefs, ...saved });
       } catch (_) {}
     }
 
-    function savePreferences() {
+    function saveLocalPreferences() {
       try {
         localStorage.setItem(PREF_KEY, JSON.stringify(readerPrefs));
       } catch (_) {}
     }
 
+    async function loadServerPreferences() {
+      try {
+        const response = await fetch('/api/config');
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!data.config) return;
+        readerPrefs = normalizeClientConfig(data.config);
+        applyPreferences();
+        saveLocalPreferences();
+      } catch (e) {
+        console.warn('Failed to load reader config:', e);
+      }
+    }
+
+    async function saveServerPreferences() {
+      try {
+        const response = await fetch('/api/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(readerPrefs)
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data.config) {
+          readerPrefs = normalizeClientConfig(data.config);
+          applyPreferences();
+          saveLocalPreferences();
+        }
+      } catch (e) {
+        console.warn('Failed to save reader config:', e);
+      }
+    }
+
     function applyPreferences() {
+      document.documentElement.dataset.theme = readerPrefs.theme;
+      document.documentElement.dataset.fontStyle = readerPrefs.fontStyle;
       document.documentElement.style.setProperty('--reader-font-size', readerPrefs.fontSize + 'px');
-      document.documentElement.style.setProperty('--content-width', readerPrefs.width);
-      const widthBtn = document.getElementById('widthBtn');
-      if (widthBtn) widthBtn.title = 'Line width ' + readerPrefs.width;
+      document.documentElement.style.setProperty('--content-width', readerPrefs.readerWidth);
+      updateReaderConfigUi();
+    }
+
+    function commitPreferences() {
+      applyPreferences();
+      saveLocalPreferences();
+      saveServerPreferences();
+    }
+
+    function updateReaderConfigUi() {
+      document.querySelectorAll('[data-theme-option]').forEach(button => {
+        const active = button.dataset.themeOption === readerPrefs.theme;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+
+      document.querySelectorAll('[data-font-option]').forEach(button => {
+        const active = button.dataset.fontOption === readerPrefs.fontStyle;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-pressed', active ? 'true' : 'false');
+      });
+
+      setText('themeValue', themeOptions[readerPrefs.theme] || themeOptions[defaultReaderPrefs.theme]);
+      setText('fontValue', fontOptions[readerPrefs.fontStyle] || fontOptions[defaultReaderPrefs.fontStyle]);
+      setText('fontSizeValue', readerPrefs.fontSize + 'px');
+      setText('fontSizeStepperValue', readerPrefs.fontSize + 'px');
+      setText('readerWidthValue', readerWidthLabels[readerPrefs.readerWidth] || readerWidthLabels[defaultReaderPrefs.readerWidth]);
+      setText('readerWidthStepperValue', readerPrefs.readerWidth);
+    }
+
+    function setText(id, value) {
+      const element = document.getElementById(id);
+      if (element) element.textContent = value;
     }
 
     function clampNumber(value, min, max, fallback) {
       const numeric = Number(value);
       if (!Number.isFinite(numeric)) return fallback;
-      return Math.min(max, Math.max(min, numeric));
+      return Math.min(max, Math.max(min, Math.round(numeric)));
     }
 
     function adjustFontSize(delta) {
-      readerPrefs.fontSize = clampNumber(readerPrefs.fontSize + delta, 14, 22, 16);
-      applyPreferences();
-      savePreferences();
+      readerPrefs.fontSize = clampNumber(readerPrefs.fontSize + delta, 14, 22, defaultReaderPrefs.fontSize);
+      commitPreferences();
     }
 
-    function cycleWidth() {
-      const current = widthSteps.indexOf(readerPrefs.width);
-      readerPrefs.width = widthSteps[(current + 1) % widthSteps.length];
-      applyPreferences();
-      savePreferences();
+    function adjustReaderWidth(delta) {
+      const current = Math.max(0, widthSteps.indexOf(readerPrefs.readerWidth));
+      const next = Math.min(widthSteps.length - 1, Math.max(0, current + delta));
+      readerPrefs.readerWidth = widthSteps[next];
+      commitPreferences();
+    }
+
+    function setReaderTheme(theme) {
+      if (!themeOptions[theme]) return;
+      readerPrefs.theme = theme;
+      commitPreferences();
+    }
+
+    function setReaderFont(fontStyle) {
+      if (!fontOptions[fontStyle]) return;
+      readerPrefs.fontStyle = fontStyle;
+      commitPreferences();
+    }
+
+    function closeReaderConfigPanel() {
+      const panel = document.getElementById('readerConfigPanel');
+      const toggle = document.getElementById('readerConfigToggle');
+      panel.classList.remove('open');
+      toggle.classList.remove('active');
+      toggle.setAttribute('aria-expanded', 'false');
+    }
+
+    function toggleReaderConfigPanel() {
+      const panel = document.getElementById('readerConfigPanel');
+      const toggle = document.getElementById('readerConfigToggle');
+      const isOpen = panel.classList.toggle('open');
+      toggle.classList.toggle('active', isOpen);
+      toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      if (isOpen) {
+        document.getElementById('annotationPanel').classList.remove('open');
+      }
     }
 
     function updateActionButtons() {
@@ -3580,13 +4278,22 @@ ${getBookmarkReaderOfflineClientScript()}
     });
     document.getElementById('readBtn').addEventListener('click', toggleReadStatus);
     document.getElementById('favBtn').addEventListener('click', toggleFavouriteStatus);
-    document.getElementById('fontDownBtn').addEventListener('click', () => adjustFontSize(-1));
-    document.getElementById('fontUpBtn').addEventListener('click', () => adjustFontSize(1));
-    document.getElementById('widthBtn').addEventListener('click', cycleWidth);
+    document.getElementById('readerConfigToggle').addEventListener('click', toggleReaderConfigPanel);
+    document.getElementById('readerConfigClose').addEventListener('click', closeReaderConfigPanel);
+    document.getElementById('fontSizeDownBtn').addEventListener('click', () => adjustFontSize(-1));
+    document.getElementById('fontSizeUpBtn').addEventListener('click', () => adjustFontSize(1));
+    document.getElementById('readerWidthDownBtn').addEventListener('click', () => adjustReaderWidth(-1));
+    document.getElementById('readerWidthUpBtn').addEventListener('click', () => adjustReaderWidth(1));
+    document.querySelectorAll('[data-theme-option]').forEach(button => {
+      button.addEventListener('click', () => setReaderTheme(button.dataset.themeOption));
+    });
+    document.querySelectorAll('[data-font-option]').forEach(button => {
+      button.addEventListener('click', () => setReaderFont(button.dataset.fontOption));
+    });
 
-    loadPreferences();
+    loadLocalPreferences();
     applyPreferences();
-    loadContent();
+    loadServerPreferences().finally(loadContent);
   </script>
 </body>
 </html>`;

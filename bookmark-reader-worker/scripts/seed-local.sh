@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Seed local R2 storage with mock data
-# Run this AFTER starting wrangler dev with --persist
+# Run this after starting local dev with: npm run dev:local
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MOCK_DATA_DIR="$SCRIPT_DIR/mock-data"
@@ -27,5 +27,5 @@ npx wrangler r2 object put local-nikk/bookmark/example-article-three.json \
   --local --env local
 
 echo "Done! Mock data seeded successfully."
-echo "Start the worker with: npx wrangler dev --env local --persist"
-echo "Then visit: http://localhost:8787"
+echo "Start the worker with: npm run dev:local"
+echo "Then visit the local Worker URL printed by Wrangler."

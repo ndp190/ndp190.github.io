@@ -4,8 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev",
+    "dev:local": "wrangler dev --env local --persist-to .wrangler/state",
     "deploy": "wrangler deploy",
     "tail": "wrangler tail",
+    "seed:local": "bash scripts/seed-local.sh",
     "backfill:images:dry-run": "node scripts/backfill-images.mjs",
     "backfill:images": "node scripts/backfill-images.mjs",
     "test": "vitest run",
