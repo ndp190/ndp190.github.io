@@ -27,6 +27,11 @@ export async function fetchBookmarkManifest(): Promise<BookmarkManifest> {
  * Fetch full bookmark content from R2 by key
  */
 export async function fetchBookmarkContent(key: string): Promise<string> {
+  const json = await fetchBookmarkJson(key);
+  return extractBookmarkMarkdown(json);
+}
+
+export async function fetchBookmarkJson(key: string): Promise<BookmarkJson> {
   const url = `${R2_BASE_URL}/${key}.json`;
   const response = await fetch(url);
 
@@ -34,14 +39,22 @@ export async function fetchBookmarkContent(key: string): Promise<string> {
     throw new Error(`Failed to load bookmark`);
   }
 
-  const json: BookmarkJson = await response.json();
+  return response.json();
+}
+
+export function extractBookmarkMarkdown(json: BookmarkJson): string {
   const firecrawl = json.firecrawlResponse;
 
   if (!firecrawl?.success || !firecrawl?.data) {
     throw new Error(`Failed to load bookmark`);
   }
 
-  return firecrawl.data.markdown;
+  const markdown = firecrawl.data.markdown;
+  if (!markdown) {
+    throw new Error(`Failed to load bookmark`);
+  }
+
+  return markdown;
 }
 
 /**

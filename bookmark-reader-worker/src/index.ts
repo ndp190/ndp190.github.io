@@ -1,5 +1,7 @@
 import { jwtVerify, createRemoteJWKSet } from 'jose';
 import type { Env, ReadingProgress, Annotation, AnnotationList, StoredBookmark, BookmarkEntry, BookmarkManifest } from './types';
+import { backfillBookmarkedArticleImages, normalizeArticleImages } from './imageProcessing';
+import { BOOKMARK_READER_PNG_ICONS } from './icons';
 
 const MANIFEST_KEY = 'bookmark/manifest.json';
 const FIRECRAWL_API_URL = 'https://api.firecrawl.dev/v2/scrape';
@@ -38,6 +40,44 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    if (request.method === 'GET' && path === '/manifest.webmanifest') {
+      return new Response(JSON.stringify(getBookmarkReaderManifest()), {
+        headers: {
+          'Content-Type': 'application/manifest+json; charset=utf-8',
+          'Cache-Control': 'no-cache',
+        },
+      });
+    }
+
+    if (request.method === 'GET' && path === '/sw.js') {
+      return new Response(getBookmarkReaderServiceWorker(), {
+        headers: {
+          'Content-Type': 'application/javascript; charset=utf-8',
+          'Cache-Control': 'no-cache',
+        },
+      });
+    }
+
+    if (request.method === 'GET' && path === '/bookmark-icon.svg') {
+      return new Response(getBookmarkIconSvg(), {
+        headers: {
+          'Content-Type': 'image/svg+xml; charset=utf-8',
+          'Cache-Control': 'public, max-age=31536000, immutable',
+        },
+      });
+    }
+
+    if (request.method === 'GET') {
+      const pngIconResponse = getBookmarkPngIconResponse(path);
+      if (pngIconResponse) {
+        return pngIconResponse;
+      }
+    }
+
+    if (path.startsWith('/media/') && request.method === 'GET') {
+      return handleMediaRoute(env, path);
+    }
+
     // API Routes
     if (path.startsWith('/api/')) {
       return handleApiRoute(request, env, path);
@@ -47,6 +87,12 @@ export default {
     if (path.startsWith('/read/')) {
       const key = decodeURIComponent(path.replace('/read/', ''));
       return new Response(getReadingPageHtml(key), {
+        headers: { 'Content-Type': 'text/html' },
+      });
+    }
+
+    if (request.method === 'GET' && path === '/offline-read-shell') {
+      return new Response(getReadingPageHtml('__bookmark_from_path__'), {
         headers: { 'Content-Type': 'text/html' },
       });
     }
@@ -129,11 +175,13 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
       const key = generateKey(title);
 
       // Store scraped content in R2
-      const storedBookmark: StoredBookmark = {
+      let storedBookmark: StoredBookmark = {
         url: body.url,
         scrapedAt: new Date().toISOString(),
         firecrawlResponse: firecrawlResult,
       };
+      const normalizationResult = await normalizeArticleImages(storedBookmark, key, env);
+      storedBookmark = normalizationResult.bookmark;
       await env.BOOKMARK_BUCKET.put(`bookmark/${key}.json`, JSON.stringify(storedBookmark), {
         httpMetadata: { contentType: 'application/json' },
       });
@@ -164,6 +212,7 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
         key,
         title,
         bookmark: newEntry,
+        imageMigration: storedBookmark.imageMigration ?? null,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
@@ -416,7 +465,57 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
     }
   }
 
+  // POST /api/backfill/images - normalize images for existing bookmark records
+  if (path === '/api/backfill/images' && request.method === 'POST') {
+    try {
+      const body = await request.json().catch(() => ({})) as {
+        execute?: boolean;
+        limit?: number;
+        concurrency?: number;
+      };
+      const report = await backfillBookmarkedArticleImages(env, {
+        execute: body.execute === true,
+        limit: body.limit,
+        concurrency: body.concurrency,
+      });
+      return jsonResponse(report);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return jsonResponse({ error: message }, 500);
+    }
+  }
+
   return jsonResponse({ error: 'API endpoint not found' }, 404);
+}
+
+async function handleMediaRoute(env: Env, path: string): Promise<Response> {
+  const key = decodeURIComponent(path.replace('/media/', ''));
+  if (!key || key.includes('..') || key.startsWith('/')) {
+    return jsonResponse({ error: 'Invalid media key' }, 400);
+  }
+
+  const object = await env.ARTICLE_IMAGES.get(key);
+  if (!object) {
+    return jsonResponse({ error: 'Media not found' }, 404);
+  }
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set('ETag', object.httpEtag);
+  headers.set('Cache-Control', isContentAddressedImageKey(key)
+    ? 'public, max-age=31536000, immutable'
+    : 'private, max-age=3600');
+  headers.set('X-Content-Type-Options', 'nosniff');
+
+  if (!headers.has('Content-Type')) {
+    headers.set('Content-Type', object.customMetadata?.sourceContentType || 'application/octet-stream');
+  }
+
+  return new Response(object.body, { headers });
+}
+
+function isContentAddressedImageKey(key: string): boolean {
+  return /^images\/[a-f0-9]{64}\.(?:jpg|png|gif|webp|avif|svg)$/.test(key);
 }
 
 async function verifyAccess(request: Request, env: Env): Promise<Response | null> {
@@ -546,6 +645,377 @@ function isPdfUrl(urlString: string): boolean {
   }
 }
 
+function getBookmarkReaderManifest() {
+  return {
+    name: 'Bookmark Reader',
+    short_name: 'Bookmarks',
+    description: 'Offline-capable private bookmark reader.',
+    start_url: '/',
+    scope: '/',
+    display: 'standalone',
+    background_color: '#282828',
+    theme_color: '#282828',
+    icons: [
+      {
+        src: '/bookmark-icon-192.png',
+        sizes: '192x192',
+        type: 'image/png',
+        purpose: 'any',
+      },
+      {
+        src: '/bookmark-icon-512.png',
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'any maskable',
+      },
+    ],
+  };
+}
+
+function getBookmarkReaderServiceWorker(): string {
+  return `
+const SHELL_CACHE = 'bookmark-reader-worker-shell-v2';
+const DATA_CACHE = 'bookmark-reader-worker-data-v2';
+const MEDIA_CACHE = 'bookmark-reader-worker-media-v1';
+const SHELL_URLS = ['/', '/offline-read-shell', '/manifest.webmanifest', '/apple-touch-icon.png', '/bookmark-icon-192.png', '/bookmark-icon-512.png', '/bookmark-icon.svg'];
+
+self.addEventListener('install', event => {
+  event.waitUntil(precacheShell());
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil(cleanOldCaches());
+  self.clients.claim();
+});
+
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+
+  const url = new URL(request.url);
+
+  if (request.mode === 'navigate') {
+    event.respondWith(handleNavigation(request, url));
+    return;
+  }
+
+  if (isOfflineDataRequest(url)) {
+    event.respondWith(networkFirst(request, DATA_CACHE));
+    return;
+  }
+
+  if (isOfflineMediaRequest(url, request)) {
+    event.respondWith(cacheFirst(request, MEDIA_CACHE));
+  }
+});
+
+async function precacheShell() {
+  const cache = await caches.open(SHELL_CACHE);
+  await Promise.allSettled(SHELL_URLS.map(async url => {
+    const response = await fetch(url, { cache: 'reload' });
+    if (response.ok) {
+      await cache.put(url, response.clone());
+    }
+  }));
+  if (!(await cache.match('/offline-read-shell'))) {
+    await cache.put('/offline-read-shell', offlineHtml('Saved article shell is not ready yet.'));
+  }
+  if (!(await cache.match('/'))) {
+    await cache.put('/', offlineHtml('Open Bookmark Reader once online to finish offline setup.'));
+  }
+}
+
+async function cleanOldCaches() {
+  const keep = new Set([SHELL_CACHE, DATA_CACHE, MEDIA_CACHE]);
+  const names = await caches.keys();
+  await Promise.all(names.map(name => {
+    if (name.startsWith('bookmark-reader-worker-') && !keep.has(name)) {
+      return caches.delete(name);
+    }
+    return undefined;
+  }));
+}
+
+async function handleNavigation(request, url) {
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      const cache = await caches.open(SHELL_CACHE);
+      await cache.put(request, response.clone());
+      if (url.pathname === '/') {
+        await cache.put('/', response.clone());
+      }
+    }
+    return response;
+  } catch {
+    const cache = await caches.open(SHELL_CACHE);
+    if (url.pathname.startsWith('/read/')) {
+      return (await cache.match(request))
+        || (await cache.match('/offline-read-shell'))
+        || offlineHtml('Saved article shell is not ready yet.');
+    }
+    return (await cache.match(request))
+      || (await cache.match('/'))
+      || offlineHtml('Bookmark Reader is not ready offline yet.');
+  }
+}
+
+async function networkFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  try {
+    const response = await fetch(request);
+    if (response.ok) {
+      await cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    return (await cache.match(request)) || jsonError('Offline data is not available', 503);
+  }
+}
+
+async function cacheFirst(request, cacheName) {
+  const cache = await caches.open(cacheName);
+  const cached = await cache.match(request, { ignoreVary: true });
+  if (cached) return cached;
+
+  const response = await fetch(request);
+  if (response.ok || response.type === 'opaque') {
+    await cache.put(request, response.clone());
+  }
+  return response;
+}
+
+function isOfflineDataRequest(url) {
+  return url.origin === self.location.origin
+    && (
+      url.pathname === '/api/bookmarks'
+      || url.pathname.startsWith('/api/bookmark/')
+      || url.pathname.startsWith('/api/annotations/')
+      || url.pathname.startsWith('/api/progress/')
+    );
+}
+
+function isOfflineMediaRequest(url, request) {
+  return request.destination === 'image'
+    || (url.origin === self.location.origin && url.pathname.startsWith('/media/'));
+}
+
+function jsonError(message, status) {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function offlineHtml(message) {
+  return new Response('<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="theme-color" content="#282828"><title>Bookmark Reader</title><style>body{margin:0;background:#282828;color:#ebdbb2;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}main{min-height:100vh;display:grid;place-items:center;padding:24px;box-sizing:border-box}p{max-width:34rem;line-height:1.6}</style></head><body><main><p>' + message + '</p></main></body></html>', {
+    headers: { 'Content-Type': 'text/html; charset=utf-8' },
+  });
+}
+`;
+}
+
+function getBookmarkIconSvg(): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="72" fill="#282828"/>
+  <rect width="512" height="116" rx="72" fill="#3c3836"/>
+  <rect y="68" width="512" height="48" fill="#3c3836"/>
+  <circle cx="78" cy="58" r="22" fill="#cc241d"/>
+  <circle cx="132" cy="58" r="22" fill="#d79921"/>
+  <circle cx="186" cy="58" r="22" fill="#98971a"/>
+  <path d="M112 242 214 196v44l-53 24 53 24v44l-102-46z" fill="#b8bb26"/>
+  <path d="M278 160h116c22 0 40 18 40 40v184l-98-42-98 42V200c0-22 18-40 40-40z" fill="#fabd2f"/>
+  <path d="M278 160h116c22 0 40 18 40 40v38H238v-38c0-22 18-40 40-40z" fill="#d79921"/>
+  <path d="M288 280h96" stroke="#282828" stroke-width="24" stroke-linecap="round"/>
+  <rect x="112" y="370" width="96" height="24" rx="12" fill="#b8bb26"/>
+</svg>`;
+}
+
+function getBookmarkPngIconResponse(path: string): Response | null {
+  const icon = BOOKMARK_READER_PNG_ICONS[path];
+  if (!icon) return null;
+
+  return new Response(base64ToBytes(icon), {
+    headers: {
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  });
+}
+
+function base64ToBytes(base64: string): Uint8Array {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function getPwaHeadTags(): string {
+  return `
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/bookmark-icon-192.png">
+  <link rel="icon" type="image/svg+xml" href="/bookmark-icon.svg">
+  <meta name="theme-color" content="#282828">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Bookmarks">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">`;
+}
+
+function getBookmarkReaderOfflineClientScript(): string {
+  return `
+    const BOOKMARK_READER_DATA_CACHE = 'bookmark-reader-worker-data-v2';
+    const BOOKMARK_READER_MEDIA_CACHE = 'bookmark-reader-worker-media-v1';
+
+    function registerBookmarkReaderServiceWorker() {
+      if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
+      navigator.serviceWorker.register('/sw.js')
+        .then(() => navigator.serviceWorker.ready)
+        .catch(() => undefined);
+    }
+
+    async function cacheJsonForOffline(path, data) {
+      if (typeof caches === 'undefined') return;
+      const cache = await caches.open(BOOKMARK_READER_DATA_CACHE);
+      await cache.put(path, new Response(JSON.stringify(data), {
+        headers: { 'Content-Type': 'application/json' }
+      }));
+    }
+
+    async function fetchAndCacheJson(path) {
+      const response = await fetch(path);
+      if (!response.ok) throw new Error('Failed to fetch ' + path);
+      const data = await response.clone().json();
+      await cacheJsonForOffline(path, data);
+      return data;
+    }
+
+    async function cacheBookmarkForOffline(bookmark) {
+      if (!bookmark || !bookmark.key) return;
+      const key = encodeURIComponent(bookmark.key);
+      try {
+        const article = await fetchAndCacheJson('/api/bookmark/' + key);
+        await Promise.allSettled([
+          fetchAndCacheJson('/api/annotations/' + key),
+          fetchAndCacheJson('/api/progress/' + key),
+          cacheArticleImagesForOffline(article)
+        ]);
+      } catch (error) {
+        console.warn('Offline cache failed for bookmark:', bookmark.key, error);
+      }
+    }
+
+    async function cacheBookmarksForOffline(bookmarks) {
+      if (!Array.isArray(bookmarks) || bookmarks.length === 0) return;
+      const queue = bookmarks.slice();
+      const workers = Array.from({ length: Math.min(2, queue.length) }, async () => {
+        while (queue.length > 0) {
+          const next = queue.shift();
+          await cacheBookmarkForOffline(next);
+        }
+      });
+      await Promise.allSettled(workers);
+    }
+
+    async function cacheCurrentArticleForOffline(bookmarkKey, bookmark, annotationsData, progressData) {
+      const key = encodeURIComponent(bookmarkKey);
+      await Promise.allSettled([
+        cacheJsonForOffline('/api/bookmark/' + key, bookmark),
+        cacheJsonForOffline('/api/annotations/' + key, annotationsData),
+        cacheJsonForOffline('/api/progress/' + key, progressData),
+        cacheArticleImagesForOffline(bookmark)
+      ]);
+    }
+
+    async function cacheArticleImagesForOffline(bookmark) {
+      if (typeof caches === 'undefined') return;
+      const urls = extractArticleImageUrls(bookmark);
+      if (urls.length === 0) return;
+
+      const cache = await caches.open(BOOKMARK_READER_MEDIA_CACHE);
+      await Promise.allSettled(urls.map(async imageUrl => {
+        const absoluteUrl = resolveArticleUrl(imageUrl, bookmark.url || location.href);
+        if (!absoluteUrl) return;
+        const request = new Request(absoluteUrl, { mode: 'no-cors', credentials: 'include' });
+        const cached = await cache.match(request, { ignoreVary: true });
+        if (cached) return;
+        const response = await fetch(request);
+        if (response.ok || response.type === 'opaque') {
+          await cache.put(request, response.clone());
+        }
+      }));
+    }
+
+    function extractArticleImageUrls(bookmark) {
+      const urls = new Set();
+      const data = bookmark?.firecrawlResponse?.data || {};
+      const metadata = data.metadata || {};
+
+      const markdown = data.markdown || '';
+      const markdownPattern = /!\\[[^\\]]*\\]\\((<[^>]+>|[^)\\s]+)(?:\\s+(?:"[^"]*"|'[^']*'|\\([^)]+\\)))?\\)/g;
+      for (const match of markdown.matchAll(markdownPattern)) {
+        urls.add(stripMarkdownUrl(match[1]));
+      }
+
+      [data.html, data.rawHtml].forEach(html => {
+        if (!html) return;
+        try {
+          const doc = new DOMParser().parseFromString(html, 'text/html');
+          doc.querySelectorAll('img').forEach(img => {
+            ['src', 'data-src', 'data-original', 'data-lazy-src'].forEach(attr => {
+              const value = img.getAttribute(attr);
+              if (value) urls.add(value);
+            });
+            ['srcset', 'data-srcset'].forEach(attr => {
+              splitSrcset(img.getAttribute(attr)).forEach(url => urls.add(url));
+            });
+          });
+          doc.querySelectorAll('source').forEach(source => {
+            ['srcset', 'data-srcset'].forEach(attr => {
+              splitSrcset(source.getAttribute(attr)).forEach(url => urls.add(url));
+            });
+          });
+        } catch {
+          // Ignore malformed article HTML.
+        }
+      });
+
+      ['ogImage', 'og:image', 'image', 'twitterImage', 'twitter:image'].forEach(field => {
+        if (typeof metadata[field] === 'string') urls.add(metadata[field]);
+      });
+
+      return Array.from(urls).filter(Boolean);
+    }
+
+    function splitSrcset(value) {
+      if (!value) return [];
+      return value.split(',').map(part => part.trim().split(/\\s+/)[0]).filter(Boolean);
+    }
+
+    function stripMarkdownUrl(value) {
+      if (!value) return '';
+      const trimmed = value.trim();
+      return trimmed.startsWith('<') && trimmed.endsWith('>') ? trimmed.slice(1, -1) : trimmed;
+    }
+
+    function resolveArticleUrl(value, baseUrl) {
+      const raw = stripMarkdownUrl(String(value || '').trim());
+      if (!raw || raw.startsWith('data:') || raw.startsWith('blob:') || raw.startsWith('cid:')) return null;
+      try {
+        return new URL(raw, raw.startsWith('/media/') ? location.origin : baseUrl).toString();
+      } catch {
+        return null;
+      }
+    }
+
+    registerBookmarkReaderServiceWorker();
+  `;
+}
+
 function getListPageHtml(): string {
   return `<!DOCTYPE html>
 <html lang="en">
@@ -554,6 +1024,7 @@ function getListPageHtml(): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Bookmark Reader</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23fabd2f'><path d='M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z'/></svg>">
+  ${getPwaHeadTags()}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap&subset=vietnamese" rel="stylesheet">
@@ -906,6 +1377,9 @@ function getListPageHtml(): string {
   </div>
 
   <script>
+${getBookmarkReaderOfflineClientScript()}
+  </script>
+  <script>
     let allBookmarks = [];
     let currentTab = 'unread';
 
@@ -925,6 +1399,8 @@ function getListPageHtml(): string {
         }
 
         allBookmarks = data.bookmarks;
+        cacheJsonForOffline('/api/bookmarks', data).catch(() => undefined);
+        cacheBookmarksForOffline(allBookmarks).catch(() => undefined);
         tabs.style.display = 'flex';
         updateCounts();
         renderBookmarks();
@@ -1233,6 +1709,7 @@ function getReadingPageHtml(key: string): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Reading - Bookmark Reader</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23fabd2f'><path d='M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z'/></svg>">
+  ${getPwaHeadTags()}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap&subset=vietnamese" rel="stylesheet">
@@ -1622,7 +2099,13 @@ function getReadingPageHtml(key: string): string {
   </div>
 
   <script>
-    const bookmarkKey = ${JSON.stringify(key)};
+${getBookmarkReaderOfflineClientScript()}
+  </script>
+  <script>
+    const embeddedBookmarkKey = ${JSON.stringify(key)};
+    const bookmarkKey = embeddedBookmarkKey === '__bookmark_from_path__'
+      ? decodeURIComponent(location.pathname.replace(/^\\/read\\//, ''))
+      : embeddedBookmarkKey;
     let annotations = [];
     let selectedText = '';
     let selectionRange = null;
@@ -1650,6 +2133,7 @@ function getReadingPageHtml(key: string): string {
 
         bookmarkUrl = bookmark.url || '';
         annotations = annotationsData.annotations || [];
+        cacheCurrentArticleForOffline(bookmarkKey, bookmark, annotationsData, progressData).catch(() => undefined);
 
         rawMarkdown = bookmark.firecrawlResponse?.data?.markdown || 'No content available';
         const title = bookmark.firecrawlResponse?.data?.metadata?.title || 'Untitled';
@@ -1689,36 +2173,201 @@ function getReadingPageHtml(key: string): string {
     }
 
     function markdownToHtml(md) {
-      let html = md
-        // Code blocks
-        .replace(/\`\`\`([\\s\\S]*?)\`\`\`/g, '<pre><code>$1</code></pre>')
-        // Inline code
-        .replace(/\`([^\`]+)\`/g, '<code>$1</code>')
-        // Headers
-        .replace(/^###### (.*$)/gm, '<h6>$1</h6>')
-        .replace(/^##### (.*$)/gm, '<h5>$1</h5>')
-        .replace(/^#### (.*$)/gm, '<h4>$1</h4>')
-        .replace(/^### (.*$)/gm, '<h3>$1</h3>')
-        .replace(/^## (.*$)/gm, '<h2>$1</h2>')
-        .replace(/^# (.*$)/gm, '<h1>$1</h1>')
-        // Bold and italic
-        .replace(/\\*\\*\\*([^*]+)\\*\\*\\*/g, '<strong><em>$1</em></strong>')
-        .replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>')
-        .replace(/\\*([^*]+)\\*/g, '<em>$1</em>')
-        // Links
-        .replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
-        // Images
-        .replace(/!\\[([^\\]]*)\\]\\(([^)]+)\\)/g, '<img src="$2" alt="$1">')
-        // Blockquotes
-        .replace(/^> (.*$)/gm, '<blockquote>$1</blockquote>')
-        // Horizontal rule
-        .replace(/^---$/gm, '<hr>')
-        // Line breaks - convert double newlines to paragraphs
-        .replace(/\\n\\n/g, '</p><p>')
-        // Single line breaks
-        .replace(/\\n/g, '<br>');
+      if (!md) return '';
 
-      return '<p>' + html + '</p>';
+      const blockPlaceholders = [];
+
+      function stashBlock(html) {
+        const token = '\\u0000BLOCK_' + blockPlaceholders.length + '\\u0000';
+        blockPlaceholders.push({ token, html });
+        return token;
+      }
+
+      function restoreBlocks(html) {
+        return blockPlaceholders.reduce((result, block) => result.split(block.token).join(block.html), html);
+      }
+
+      function escapeAttribute(value) {
+        return escapeHtml(String(value || ''))
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function cleanMarkdownUrl(value) {
+        return String(value || '').trim().replace(/^<(.+)>$/, '$1');
+      }
+
+      function renderInline(text) {
+        const codePlaceholders = [];
+        const tick = String.fromCharCode(96);
+        const inlineCodePattern = new RegExp(tick + '([^' + tick + ']+)' + tick, 'g');
+
+        let html = text.replace(inlineCodePattern, function (_match, code) {
+          const token = '\\u0000CODE_' + codePlaceholders.length + '\\u0000';
+          codePlaceholders.push('<code>' + escapeHtml(code) + '</code>');
+          return token;
+        });
+
+        html = html
+          .replace(/!\\[([^\\]]*)\\]\\((<[^>]+>|[^)\\s]+)(?:\\s+["'][^"']*["'])?\\)/g, function (_match, alt, url) {
+            const cleanUrl = cleanMarkdownUrl(url);
+            return '<img src="' + escapeAttribute(cleanUrl) + '" alt="' + escapeAttribute(alt) + '" loading="lazy">';
+          })
+          .replace(/(^|[^!])\\[([^\\]]+)\\]\\((<[^>]+>|[^)\\s]+)(?:\\s+["'][^"']*["'])?\\)/g, function (_match, prefix, label, url) {
+            const cleanUrl = cleanMarkdownUrl(url);
+            return prefix + '<a href="' + escapeAttribute(cleanUrl) + '" target="_blank" rel="noopener noreferrer">' + label + '</a>';
+          })
+          .replace(/\\*\\*\\*([^*]+)\\*\\*\\*/g, '<strong><em>$1</em></strong>')
+          .replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>')
+          .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+          .replace(/~~([^~]+)~~/g, '<del>$1</del>')
+          .replace(/\\*([^*]+)\\*/g, '<em>$1</em>')
+          .replace(/_([^_]+)_/g, '<em>$1</em>');
+
+        return codePlaceholders.reduce((result, code, index) => {
+          return result.split('\\u0000CODE_' + index + '\\u0000').join(code);
+        }, html);
+      }
+
+      function splitTableRow(row) {
+        return row.trim().replace(/^\\|/, '').replace(/\\|$/, '').split('|').map(cell => cell.trim());
+      }
+
+      function isTableBlock(lines) {
+        if (lines.length < 2 || lines[0].indexOf('|') === -1) return false;
+        return /^\\s*\\|?\\s*:?-{3,}:?\\s*(\\|\\s*:?-{3,}:?\\s*)+\\|?\\s*$/.test(lines[1]);
+      }
+
+      function renderTable(lines) {
+        const headers = splitTableRow(lines[0]);
+        const rows = lines.slice(2).filter(line => line.trim()).map(splitTableRow);
+        const headerHtml = headers.map(header => '<th>' + renderInline(header) + '</th>').join('');
+        const bodyHtml = rows.map(row => {
+          const cells = headers.map((_header, index) => '<td>' + renderInline(row[index] || '') + '</td>').join('');
+          return '<tr>' + cells + '</tr>';
+        }).join('');
+
+        return '<table><thead><tr>' + headerHtml + '</tr></thead><tbody>' + bodyHtml + '</tbody></table>';
+      }
+
+      function renderList(lines, ordered) {
+        const tag = ordered ? 'ol' : 'ul';
+        const itemPattern = ordered ? /^\\s*\\d+[.)]\\s+/ : /^\\s*[-*+]\\s+/;
+        const items = lines.map(line => {
+          let item = line.replace(itemPattern, '');
+          const task = /^\\[([ xX])\\]\\s+/.exec(item);
+          let checkbox = '';
+
+          if (task) {
+            checkbox = '<input type="checkbox" disabled' + (task[1].toLowerCase() === 'x' ? ' checked' : '') + '> ';
+            item = item.slice(task[0].length);
+          }
+
+          return '<li>' + checkbox + renderInline(item) + '</li>';
+        }).join('');
+
+        return '<' + tag + '>' + items + '</' + tag + '>';
+      }
+
+      function isRawHtmlBlock(block) {
+        return /^<\\/?(?:address|article|aside|blockquote|details|div|figure|figcaption|footer|form|header|hr|iframe|img|main|nav|ol|p|picture|pre|section|source|table|ul|video|h[1-6])(?:\\s|>|\\/)/i.test(block.trim());
+      }
+
+      function renderBlock(block) {
+        const trimmed = block.trim();
+        if (!trimmed) return '';
+        if (/^\\u0000BLOCK_\\d+\\u0000$/.test(trimmed)) return trimmed;
+        if (isRawHtmlBlock(trimmed)) return trimmed;
+
+        const lines = trimmed.split('\\n');
+        const heading = /^(#{1,6})\\s+(.+?)\\s*#*$/.exec(trimmed);
+
+        if (heading) {
+          const level = heading[1].length;
+          return '<h' + level + '>' + renderInline(heading[2]) + '</h' + level + '>';
+        }
+
+        if (lines.length === 2 && /^=+\\s*$/.test(lines[1])) {
+          return '<h1>' + renderInline(lines[0]) + '</h1>';
+        }
+
+        if (lines.length === 2 && /^-+\\s*$/.test(lines[1])) {
+          return '<h2>' + renderInline(lines[0]) + '</h2>';
+        }
+
+        if (/^(?:-{3,}|\\*{3,}|_{3,})$/.test(trimmed)) {
+          return '<hr>';
+        }
+
+        if (isTableBlock(lines)) {
+          return renderTable(lines);
+        }
+
+        if (lines.every(line => /^\\s*[-*+]\\s+/.test(line))) {
+          return renderList(lines, false);
+        }
+
+        if (lines.every(line => /^\\s*\\d+[.)]\\s+/.test(line))) {
+          return renderList(lines, true);
+        }
+
+        if (lines.every(line => /^>\\s?/.test(line))) {
+          const quote = lines.map(line => line.replace(/^>\\s?/, '')).join('\\n');
+          return '<blockquote>' + renderBlocks(quote) + '</blockquote>';
+        }
+
+        return '<p>' + renderInline(trimmed).replace(/\\n/g, '<br>') + '</p>';
+      }
+
+      function stashFencedCode(source) {
+        const fence = String.fromCharCode(96, 96, 96);
+        const lines = source.replace(/\\r\\n/g, '\\n').split('\\n');
+        const output = [];
+        let inFence = false;
+        let language = '';
+        let codeLines = [];
+
+        for (const line of lines) {
+          if (!inFence && line.slice(0, 3) === fence) {
+            inFence = true;
+            language = line.slice(3).trim().split(/\\s+/)[0] || '';
+            codeLines = [];
+            continue;
+          }
+
+          if (inFence && line.slice(0, 3) === fence) {
+            const className = language ? ' class="language-' + escapeAttribute(language) + '"' : '';
+            output.push(stashBlock('<pre><code' + className + '>' + escapeHtml(codeLines.join('\\n')) + '</code></pre>'));
+            inFence = false;
+            language = '';
+            codeLines = [];
+            continue;
+          }
+
+          if (inFence) {
+            codeLines.push(line);
+          } else {
+            output.push(line);
+          }
+        }
+
+        if (inFence) {
+          output.push(fence + language);
+          output.push(...codeLines);
+        }
+
+        return output.join('\\n');
+      }
+
+      function renderBlocks(source) {
+        return source
+          .split(/\\n{2,}/)
+          .map(renderBlock)
+          .filter(Boolean)
+          .join('\\n');
+      }
+
+      return restoreBlocks(renderBlocks(stashFencedCode(md)));
     }
 
     function insertAnnotationMarkers(markdown, anns) {
