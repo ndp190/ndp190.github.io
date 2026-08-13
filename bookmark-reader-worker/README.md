@@ -7,6 +7,7 @@ A Cloudflare Worker that provides a reading interface for bookmarked content sto
 - **Bookmark List**: Display all bookmarks from the manifest with reading progress
 - **Reading Progress**: Automatically saves scroll position as you read
 - **Annotations**: Select text to add annotations, view and delete existing annotations
+- **Private Knowledge Search**: Search saved article text, notes, read state, and favourites at `/knowledge`
 - **Offline Media Support**: Article images are copied to R2 and served from the Worker at stable `/media/...` URLs
 - **PWA Offline Shell**: The Worker serves its own manifest and service worker for Home Screen installs
 - **Cloudflare Access**: Protected by Cloudflare Access JWT authentication
@@ -49,12 +50,26 @@ npm install
 
 ### 5. Development
 
+Use the default development command for local browser testing. It seeds mock bookmark data, starts the `local` Wrangler environment, and bypasses Cloudflare Access via `SKIP_AUTH=true`.
+
 ```bash
-npm run dev:local
-npm run seed:local
+npm run dev
 ```
 
-Run `seed:local` after the local Worker is running. It writes `bookmark/manifest.json` and mock articles into the simulated `local-nikk` R2 bucket; without it, the library page will show `Manifest not found`.
+Open the local reader:
+
+```text
+http://localhost:8787/
+http://localhost:8787/knowledge
+```
+
+On `/knowledge`, click **Rebuild index** once to build the local search index. The API equivalent is:
+
+```bash
+curl -X POST http://localhost:8787/api/knowledge/rebuild
+```
+
+This uses Wrangler's current `--persist-to .wrangler/state` flag for local KV/R2 state. Use `npm run dev:remote` only when you intentionally want Wrangler's default Access-protected environment.
 
 ### 6. Deploy
 
@@ -106,6 +121,11 @@ If an old Home Screen shortcut was created before PWA support, delete that short
 | GET | `/api/annotations/:key` | Get annotations for a bookmark |
 | POST | `/api/annotations/:key` | Add an annotation |
 | DELETE | `/api/annotations/:key/:id` | Delete an annotation |
+| GET | `/knowledge` | Private knowledge search dashboard |
+| GET | `/api/knowledge/search` | Search indexed bookmarks |
+| GET | `/api/knowledge/annotations` | Search notes and highlights across bookmarks |
+| GET | `/api/knowledge/status` | Get knowledge index metadata |
+| POST | `/api/knowledge/rebuild` | Rebuild the R2-backed knowledge index |
 | POST | `/api/backfill/images` | Dry-run or execute image normalization for existing bookmarks |
 
 ## Data Sources

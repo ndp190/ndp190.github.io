@@ -279,3 +279,72 @@ describe('Annotations API', () => {
     });
   });
 });
+
+describe('Knowledge annotation refresh', () => {
+  let knowledgeKey: string;
+
+  beforeEach(async () => {
+    knowledgeKey = `annotation-knowledge-${crypto.randomUUID()}`;
+    await env.BOOKMARK_BUCKET.put('bookmark/manifest.json', JSON.stringify({
+      bookmarks: [
+        {
+          id: 1,
+          key: knowledgeKey,
+          title: 'Global Annotation Search',
+          description: 'A bookmark used to refresh the knowledge index.',
+          url: 'https://example.com/global-annotation-search',
+        },
+      ],
+      updatedAt: '2026-08-12T00:00:00.000Z',
+    }));
+    await env.BOOKMARK_BUCKET.put(`bookmark/${knowledgeKey}.json`, JSON.stringify({
+      url: 'https://example.com/global-annotation-search',
+      scrapedAt: '2026-08-12T00:00:00.000Z',
+      firecrawlResponse: {
+        success: true,
+        data: {
+          markdown: '# Global Annotation Search\n\nAnnotation updates should refresh search.',
+          metadata: {
+            title: 'Global Annotation Search',
+            description: 'A bookmark used to refresh the knowledge index.',
+            sourceURL: 'https://example.com/global-annotation-search',
+          },
+        },
+      },
+    }));
+    await env.NIKK_BOOKMARK_ANNOTATION.delete(knowledgeKey);
+    await env.BOOKMARK_BUCKET.delete(`bookmark/knowledge/docs/${encodeURIComponent(knowledgeKey)}.json`);
+  });
+
+  it('updates global annotation search after create and delete', async () => {
+    const createResponse = await SELF.fetch(
+      `https://example.com/api/annotations/${knowledgeKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          selectedText: 'knowledge highlight',
+          note: 'espresso searchable note',
+          startOffset: 0,
+          endOffset: 19,
+        }),
+      }
+    );
+    const createData = await createResponse.json();
+
+    const searchResponse = await SELF.fetch('https://example.com/api/knowledge/annotations?q=espresso');
+    const searchData = await searchResponse.json();
+    expect(searchData.annotations).toHaveLength(1);
+    expect(searchData.annotations[0].bookmarkKey).toBe(knowledgeKey);
+
+    const deleteResponse = await SELF.fetch(
+      `https://example.com/api/annotations/${knowledgeKey}/${createData.annotation.id}`,
+      { method: 'DELETE' }
+    );
+    expect(deleteResponse.status).toBe(200);
+
+    const afterDeleteResponse = await SELF.fetch('https://example.com/api/knowledge/annotations?q=espresso');
+    const afterDeleteData = await afterDeleteResponse.json();
+    expect(afterDeleteData.annotations).toHaveLength(0);
+  });
+});

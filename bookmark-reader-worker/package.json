@@ -3,8 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "wrangler dev",
-    "dev:local": "wrangler dev --env local --persist-to .wrangler/state",
+    "predev": "npm run seed:local",
+    "dev": "wrangler dev --env local --persist-to .wrangler/state",
+    "dev:local": "npm run dev",
+    "dev:remote": "wrangler dev",
     "deploy": "wrangler deploy",
     "tail": "wrangler tail",
     "seed:local": "bash scripts/seed-local.sh",

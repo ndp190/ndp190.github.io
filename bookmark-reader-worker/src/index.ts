@@ -12,6 +12,15 @@ import type { Schema } from 'hast-util-sanitize';
 import type { Env, ReadingProgress, ReaderConfig, ReaderFontStyle, ReaderTheme, ReaderWidth, Annotation, AnnotationList, StoredBookmark, BookmarkEntry, BookmarkManifest } from './types';
 import { backfillBookmarkedArticleImages, normalizeArticleImages } from './imageProcessing';
 import { BOOKMARK_READER_PNG_ICONS } from './icons';
+import {
+  deleteKnowledgeDocumentForKey,
+  getKnowledgeIndexStatus,
+  rebuildKnowledgeIndex,
+  refreshKnowledgeDocument,
+  refreshKnowledgeDocumentForKey,
+  searchKnowledgeAnnotations,
+  searchKnowledgeDocuments,
+} from './knowledge';
 
 const MANIFEST_KEY = 'bookmark/manifest.json';
 const READER_CONFIG_KEY = '__reader_config_v1__';
@@ -126,6 +135,12 @@ export default {
       });
     }
 
+    if (request.method === 'GET' && path === '/knowledge') {
+      return new Response(getKnowledgePageHtml(), {
+        headers: { 'Content-Type': 'text/html' },
+      });
+    }
+
     if (request.method === 'GET' && path === '/offline-read-shell') {
       return new Response(getReadingPageHtml('__bookmark_from_path__'), {
         headers: { 'Content-Type': 'text/html' },
@@ -197,6 +212,46 @@ async function getReaderConfig(env: Env): Promise<ReaderConfig> {
 }
 
 async function handleApiRoute(request: Request, env: Env, path: string): Promise<Response> {
+  if (path === '/api/knowledge/search' && request.method === 'GET') {
+    try {
+      return jsonResponse(await searchKnowledgeDocuments(env, new URL(request.url).searchParams));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return jsonResponse({ error: message }, 500);
+    }
+  }
+
+  if (path === '/api/knowledge/annotations' && request.method === 'GET') {
+    try {
+      return jsonResponse(await searchKnowledgeAnnotations(env, new URL(request.url).searchParams));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return jsonResponse({ error: message }, 500);
+    }
+  }
+
+  if (path === '/api/knowledge/status' && request.method === 'GET') {
+    try {
+      return jsonResponse(await getKnowledgeIndexStatus(env));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return jsonResponse({ error: message }, 500);
+    }
+  }
+
+  if (path === '/api/knowledge/rebuild' && request.method === 'POST') {
+    try {
+      const index = await rebuildKnowledgeIndex(env);
+      if (!index) {
+        return jsonResponse({ error: 'Manifest not found' }, 404);
+      }
+      return jsonResponse({ success: true, index });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      return jsonResponse({ error: message }, 500);
+    }
+  }
+
   // GET /api/bookmarks - fetch manifest and enrich with progress
   if (path === '/api/bookmarks' && request.method === 'GET') {
     try {
@@ -323,6 +378,7 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
       await env.BOOKMARK_BUCKET.put(MANIFEST_KEY, JSON.stringify(manifest), {
         httpMetadata: { contentType: 'application/json' },
       });
+      await refreshKnowledgeDocument(env, newEntry, storedBookmark);
 
       return jsonResponse({
         success: true,
@@ -455,6 +511,7 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
 
       annotationList.annotations.push(newAnnotation);
       await env.NIKK_BOOKMARK_ANNOTATION.put(key, JSON.stringify(annotationList));
+      await refreshKnowledgeDocumentForKey(env, key).catch(() => undefined);
 
       return jsonResponse({ success: true, annotation: newAnnotation });
     } catch (error) {
@@ -477,6 +534,7 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
       const annotationList: AnnotationList = JSON.parse(existing);
       annotationList.annotations = annotationList.annotations.filter(a => a.id !== annotationId);
       await env.NIKK_BOOKMARK_ANNOTATION.put(key, JSON.stringify(annotationList));
+      await refreshKnowledgeDocumentForKey(env, key).catch(() => undefined);
 
       return jsonResponse({ success: true });
     } catch (error) {
@@ -509,6 +567,9 @@ async function handleApiRoute(request: Request, env: Env, path: string): Promise
 
       // 5. Delete annotations from KV
       await env.NIKK_BOOKMARK_ANNOTATION.delete(key);
+
+      // 6. Delete private knowledge document from R2
+      await deleteKnowledgeDocumentForKey(env, key);
 
       return jsonResponse({ success: true });
     } catch (error) {
@@ -1290,6 +1351,21 @@ function getListPageHtml(): string {
     .sync-btn.syncing .sync-icon { animation: spin 1s linear infinite; }
     .sync-btn.success { background: #3d5a3d; border-color: #b8bb26; color: #b8bb26; }
     .sync-btn.error { background: #5a3d3d; border-color: #fb4934; color: #fb4934; }
+    .page-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .knowledge-link {
+      padding: 0.5rem 1rem;
+      color: #83a598;
+      border: 2px solid #504945;
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+    .knowledge-link:hover { border-color: #83a598; color: #b8d2c9; }
     .loading {
       display: flex;
       align-items: center;
@@ -1564,13 +1640,16 @@ function getListPageHtml(): string {
   <div class="container">
     <div class="page-header">
       <h1>Bookmark Reader</h1>
-      <button class="sync-btn" id="syncBtn" title="Sync to R2 for terminal site">
-        <svg class="sync-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M23 4v6h-6M1 20v-6h6"/>
-          <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
-        </svg>
-        <span class="sync-text">Sync</span>
-      </button>
+      <div class="page-actions">
+        <a class="knowledge-link" href="/knowledge">Knowledge</a>
+        <button class="sync-btn" id="syncBtn" title="Sync to R2 for terminal site">
+          <svg class="sync-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M23 4v6h-6M1 20v-6h6"/>
+            <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+          </svg>
+          <span class="sync-text">Sync</span>
+        </button>
+      </div>
     </div>
     <div class="tabs" id="tabs" style="display:none;">
       <button class="tab-btn active" data-tab="unread" id="tabUnread">Unread<span class="tab-count" id="countUnread">(0)</span></button>
@@ -1922,6 +2001,517 @@ ${getBookmarkReaderOfflineClientScript()}
         loadBookmarks();
       }
     });
+  </script>
+</body>
+</html>`;
+}
+
+function getKnowledgePageHtml(): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Knowledge - Bookmark Reader</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2383a598'><path d='M4 4h16v3H4zm0 6h10v3H4zm0 6h16v3H4z'/></svg>">
+  ${getPwaHeadTags()}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap&subset=vietnamese" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      color-scheme: dark;
+      --bg: #282828;
+      --surface: #34302f;
+      --surface-2: #3c3836;
+      --line: #504945;
+      --ink: #ebdbb2;
+      --soft: #d5c4a1;
+      --muted: #928374;
+      --yellow: #fabd2f;
+      --aqua: #83a598;
+      --green: #b8bb26;
+      --red: #fb4934;
+      --blue: #458588;
+    }
+    body {
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: 'JetBrains Mono', 'IBM Plex Mono', 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+      font-weight: 500;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      padding: clamp(1rem, 3vw, 2rem);
+    }
+    a { color: inherit; }
+    button, input {
+      font: inherit;
+    }
+    .knowledge-shell {
+      width: min(1180px, 100%);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 250px minmax(0, 1fr);
+      gap: clamp(1rem, 2vw, 1.5rem);
+      align-items: start;
+    }
+    .rail {
+      position: sticky;
+      top: 1rem;
+      border-left: 3px solid var(--aqua);
+      padding-left: 1rem;
+      min-width: 0;
+    }
+    .brand-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+    }
+    .back-link {
+      color: var(--aqua);
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+    h1 {
+      color: var(--yellow);
+      font-size: clamp(1.5rem, 3vw, 2rem);
+      line-height: 1.1;
+      margin-bottom: 0.5rem;
+    }
+    .lede {
+      color: var(--soft);
+      font-size: 0.9rem;
+      margin-bottom: 1.25rem;
+    }
+    .status {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 0.8rem;
+      margin-bottom: 1rem;
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+    .status strong {
+      display: block;
+      color: var(--ink);
+      font-size: 0.92rem;
+      margin-bottom: 0.25rem;
+    }
+    .rebuild-btn {
+      width: 100%;
+      min-height: 42px;
+      border: 2px solid var(--aqua);
+      border-radius: 6px;
+      background: transparent;
+      color: var(--aqua);
+      cursor: pointer;
+      font-weight: 700;
+      transition: background 0.2s, color 0.2s, opacity 0.2s;
+      margin-bottom: 1.25rem;
+    }
+    .rebuild-btn:hover {
+      background: var(--aqua);
+      color: var(--bg);
+    }
+    .rebuild-btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+    .mode-tabs, .filters {
+      display: grid;
+      gap: 0.5rem;
+      margin-bottom: 1.25rem;
+    }
+    .mode-tabs {
+      grid-template-columns: 1fr 1fr;
+    }
+    .filters {
+      grid-template-columns: 1fr;
+    }
+    .mode-btn, .filter-btn {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--soft);
+      cursor: pointer;
+      text-align: left;
+      padding: 0 0.75rem;
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+    }
+    .mode-btn {
+      text-align: center;
+    }
+    .mode-btn:hover, .filter-btn:hover {
+      border-color: var(--aqua);
+      color: var(--ink);
+    }
+    .mode-btn.active, .filter-btn.active {
+      background: var(--yellow);
+      border-color: var(--yellow);
+      color: var(--bg);
+      font-weight: 700;
+    }
+    .main {
+      min-width: 0;
+    }
+    .search-bar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+    .search-input {
+      width: 100%;
+      min-height: 52px;
+      border: 2px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface-2);
+      color: var(--ink);
+      padding: 0 1rem;
+      outline: none;
+    }
+    .search-input:focus {
+      border-color: var(--aqua);
+    }
+    .search-btn {
+      min-width: 118px;
+      border: none;
+      border-radius: 8px;
+      background: var(--aqua);
+      color: var(--bg);
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .summary-line {
+      min-height: 28px;
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-bottom: 0.75rem;
+    }
+    .result-list {
+      display: grid;
+      gap: 0.85rem;
+    }
+    .result-row {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--surface);
+      padding: 1rem;
+    }
+    .result-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: flex-start;
+      margin-bottom: 0.65rem;
+    }
+    .result-title {
+      color: var(--yellow);
+      font-weight: 800;
+      text-decoration: none;
+      overflow-wrap: anywhere;
+    }
+    .result-title:hover {
+      text-decoration: underline;
+    }
+    .score {
+      color: var(--muted);
+      font-size: 0.78rem;
+      white-space: nowrap;
+    }
+    .snippet {
+      color: var(--soft);
+      font-size: 0.9rem;
+      margin-bottom: 0.85rem;
+      overflow-wrap: anywhere;
+    }
+    mark {
+      background: rgba(250, 189, 47, 0.24);
+      color: var(--yellow);
+      border-bottom: 1px solid var(--yellow);
+      padding: 0 0.08rem;
+    }
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      align-items: center;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+    .pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0.15rem 0.45rem;
+    }
+    .pill.green { color: var(--green); border-color: rgba(184, 187, 38, 0.45); }
+    .pill.aqua { color: var(--aqua); border-color: rgba(131, 165, 152, 0.45); }
+    .source-link {
+      color: var(--aqua);
+      text-decoration: none;
+      overflow-wrap: anywhere;
+    }
+    .source-link:hover { text-decoration: underline; }
+    .empty, .error {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 2rem;
+      background: var(--surface);
+      color: var(--muted);
+      text-align: center;
+    }
+    .error {
+      color: var(--red);
+      border-color: rgba(251, 73, 52, 0.65);
+    }
+    @media (max-width: 760px) {
+      body { padding: 1rem; }
+      .knowledge-shell {
+        grid-template-columns: 1fr;
+      }
+      .rail {
+        position: static;
+        border-left: 0;
+        border-top: 3px solid var(--aqua);
+        padding-left: 0;
+        padding-top: 1rem;
+      }
+      .filters {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .search-bar {
+        grid-template-columns: 1fr;
+      }
+      .search-btn {
+        min-height: 46px;
+      }
+      .result-head {
+        display: block;
+      }
+      .score {
+        display: block;
+        margin-top: 0.35rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="knowledge-shell">
+    <aside class="rail">
+      <div class="brand-row">
+        <a class="back-link" href="/">&larr; Reader</a>
+      </div>
+      <h1>Knowledge</h1>
+      <p class="lede">Search saved articles, notes, read state, and favourites.</p>
+      <div class="status" id="indexStatus"><strong>Index</strong><span>Checking...</span></div>
+      <button class="rebuild-btn" id="rebuildBtn">Rebuild index</button>
+      <div class="mode-tabs" aria-label="Knowledge mode">
+        <button class="mode-btn active" data-mode="search">Search</button>
+        <button class="mode-btn" data-mode="notes">Notes</button>
+      </div>
+      <div class="filters" id="filters" aria-label="Search filters">
+        <button class="filter-btn active" data-state="all">All</button>
+        <button class="filter-btn" data-state="unread">Unread</button>
+        <button class="filter-btn" data-state="read">Read</button>
+        <button class="filter-btn" data-state="favourites">Favourites</button>
+        <button class="filter-btn" data-state="annotated">Annotated</button>
+      </div>
+    </aside>
+    <section class="main">
+      <form class="search-bar" id="searchForm">
+        <input class="search-input" id="searchInput" type="search" autocomplete="off" placeholder="Search saved articles" autofocus>
+        <button class="search-btn" type="submit">Search</button>
+      </form>
+      <div class="summary-line" id="summaryLine">Ready.</div>
+      <div class="result-list" id="results"></div>
+    </section>
+  </main>
+
+  <script>
+    const searchInput = document.getElementById('searchInput');
+    const searchForm = document.getElementById('searchForm');
+    const summaryLine = document.getElementById('summaryLine');
+    const results = document.getElementById('results');
+    const rebuildBtn = document.getElementById('rebuildBtn');
+    const indexStatus = document.getElementById('indexStatus');
+    const filters = document.getElementById('filters');
+    let activeMode = 'search';
+    let activeState = 'all';
+    let requestId = 0;
+    let debounceTimer = 0;
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function statusPills(item) {
+      const pills = [];
+      pills.push('<span class="pill">' + (item.isRead ? 'Read' : 'Unread') + '</span>');
+      if (item.isFavourite) pills.push('<span class="pill green">Favourite</span>');
+      if (item.annotationCount || item.note) {
+        const count = item.annotationCount ? item.annotationCount + ' notes' : 'Note';
+        pills.push('<span class="pill aqua">' + escapeHtml(count) + '</span>');
+      }
+      return pills.join('');
+    }
+
+    function renderSearch(data) {
+      summaryLine.textContent = data.count + ' bookmark' + (data.count === 1 ? '' : 's');
+      if (!data.results.length) {
+        results.innerHTML = '<div class="empty">No matching bookmarks.</div>';
+        return;
+      }
+
+      results.innerHTML = data.results.map(function(item) {
+        const score = item.score ? 'score ' + item.score : 'indexed';
+        const snippetHtml = item.snippet && item.snippet.html ? item.snippet.html : escapeHtml(item.description || item.url);
+        return '<article class="result-row">' +
+          '<div class="result-head">' +
+            '<a class="result-title" href="' + escapeHtml(item.readUrl) + '">' + escapeHtml(item.title) + '</a>' +
+            '<span class="score">' + escapeHtml(score) + '</span>' +
+          '</div>' +
+          '<div class="snippet">' + snippetHtml + '</div>' +
+          '<div class="meta-row">' +
+            statusPills(item) +
+            '<a class="source-link" href="' + escapeHtml(item.sourceUrl || item.url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(item.url) + '</a>' +
+          '</div>' +
+        '</article>';
+      }).join('');
+    }
+
+    function renderNotes(data) {
+      summaryLine.textContent = data.count + ' note' + (data.count === 1 ? '' : 's');
+      if (!data.annotations.length) {
+        results.innerHTML = '<div class="empty">No matching notes.</div>';
+        return;
+      }
+
+      results.innerHTML = data.annotations.map(function(item) {
+        const noteText = item.note ? '<div class="snippet">' + escapeHtml(item.note) + '</div>' : '';
+        const snippetHtml = item.snippet && item.snippet.html ? item.snippet.html : escapeHtml(item.selectedText || item.title);
+        return '<article class="result-row">' +
+          '<div class="result-head">' +
+            '<a class="result-title" href="' + escapeHtml(item.readUrl) + '">' + escapeHtml(item.title) + '</a>' +
+            '<span class="score">' + escapeHtml(new Date(item.createdAt).toLocaleDateString()) + '</span>' +
+          '</div>' +
+          '<div class="snippet">' + snippetHtml + '</div>' +
+          noteText +
+          '<div class="meta-row">' +
+            statusPills({ isRead: item.isRead, isFavourite: item.isFavourite, note: true }) +
+            '<a class="source-link" href="' + escapeHtml(item.sourceUrl || item.url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(item.url) + '</a>' +
+          '</div>' +
+        '</article>';
+      }).join('');
+    }
+
+    async function loadStatus() {
+      try {
+        const response = await fetch('/api/knowledge/status');
+        const data = await response.json();
+        if (data.status === 'ready' && data.index) {
+          indexStatus.innerHTML = '<strong>Index</strong><span>' + data.index.indexedCount + '/' + data.index.bookmarkCount + ' bookmarks &middot; ' + new Date(data.index.builtAt).toLocaleString() + '</span>';
+        } else {
+          indexStatus.innerHTML = '<strong>Index</strong><span>Missing</span>';
+        }
+      } catch (error) {
+        indexStatus.innerHTML = '<strong>Index</strong><span>Unavailable</span>';
+      }
+    }
+
+    async function runQuery() {
+      const id = ++requestId;
+      const params = new URLSearchParams();
+      const query = searchInput.value.trim();
+      if (query) params.set('q', query);
+      params.set('limit', '50');
+      if (activeMode === 'search') params.set('state', activeState);
+
+      summaryLine.textContent = 'Searching...';
+      const endpoint = activeMode === 'notes' ? '/api/knowledge/annotations' : '/api/knowledge/search';
+
+      try {
+        const response = await fetch(endpoint + '?' + params.toString());
+        const data = await response.json();
+        if (id !== requestId) return;
+        if (!response.ok || data.error) throw new Error(data.error || 'Search failed');
+        if (activeMode === 'notes') {
+          renderNotes(data);
+        } else {
+          renderSearch(data);
+        }
+      } catch (error) {
+        if (id !== requestId) return;
+        summaryLine.textContent = 'Failed';
+        results.innerHTML = '<div class="error">' + escapeHtml(error.message) + '</div>';
+      }
+    }
+
+    function scheduleQuery() {
+      window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(runQuery, 180);
+    }
+
+    async function rebuildIndex() {
+      rebuildBtn.disabled = true;
+      rebuildBtn.textContent = 'Rebuilding...';
+      try {
+        const response = await fetch('/api/knowledge/rebuild', { method: 'POST' });
+        const data = await response.json();
+        if (!response.ok || data.error) throw new Error(data.error || 'Rebuild failed');
+        await loadStatus();
+        await runQuery();
+      } catch (error) {
+        results.innerHTML = '<div class="error">' + escapeHtml(error.message) + '</div>';
+      } finally {
+        rebuildBtn.disabled = false;
+        rebuildBtn.textContent = 'Rebuild index';
+      }
+    }
+
+    document.querySelectorAll('.mode-btn').forEach(function(button) {
+      button.addEventListener('click', function() {
+        activeMode = button.dataset.mode;
+        document.querySelectorAll('.mode-btn').forEach(function(item) {
+          item.classList.toggle('active', item === button);
+        });
+        filters.style.display = activeMode === 'search' ? 'grid' : 'none';
+        searchInput.placeholder = activeMode === 'search' ? 'Search saved articles' : 'Search notes';
+        runQuery();
+      });
+    });
+
+    document.querySelectorAll('.filter-btn').forEach(function(button) {
+      button.addEventListener('click', function() {
+        activeState = button.dataset.state || 'all';
+        document.querySelectorAll('.filter-btn').forEach(function(item) {
+          item.classList.toggle('active', item === button);
+        });
+        runQuery();
+      });
+    });
+
+    searchForm.addEventListener('submit', function(event) {
+      event.preventDefault();
+      runQuery();
+    });
+    searchInput.addEventListener('input', scheduleQuery);
+    rebuildBtn.addEventListener('click', rebuildIndex);
+
+    loadStatus();
+    runQuery();
   </script>
 </body>
 </html>`;
